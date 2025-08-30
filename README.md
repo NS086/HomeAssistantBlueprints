@@ -123,9 +123,7 @@ intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.inte
 ## Troubleshooting
 
 - **Image not showing**  
-  - Confirm the file exists under **Media** (`/media/reolink/...`).  
   - Ensure the Companion App can reach HA (local/VPN/remote URL).  
-  - The `?v=...` cache-buster prevents stale images.
 
 - **Buttons do nothing**  
   - Verify the **device** chosen under “Phone to notify” matches the phone you’re testing.  
@@ -133,10 +131,6 @@ intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.inte
 
 - **Wrong camera opens in Reolink**  
   - Double-check the **UID** and the **channel bitmask** (`2^(N-1)`).
-
-- **Typos in intent**  
-  - Ensure **`S.ALMTIME`** (not `S.ALMTHME`) and all `S.` keys are present.
-
 
 ---
 
@@ -151,13 +145,12 @@ intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.inte
 ## FAQ
 
 **Can I notify multiple phones?**  
-Yes — create multiple automation instances from the blueprint (one per device). Or extend the blueprint to accept multiple devices and loop over them.
+Yes
 
 **Can I change Snooze duration per camera?**  
 Yes — set **Snooze duration** per automation instance. Share one timer for a **global** snooze, or use separate timers per camera.
 
-**Why not keep timestamped files?**  
-To avoid media sprawl. If you want history, switch to a small ring buffer (`_0.jpg…_9.jpg`) or add a nightly cleanup task.
+
 
 ---
 
