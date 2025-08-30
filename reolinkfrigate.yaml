@@ -1,0 +1,138 @@
+blueprint:
+  name: Reolink Camera Alert with Snapshot, Actions & Snooze
+  description: >
+    Sends a snapshot notification on person/visitor events, with buttons to
+    open Frigate or Reolink, plus a Snooze (6h by default). Uses a single
+    rolling snapshot file to avoid file buildup.
+  domain: automation
+  input:
+    person_sensor:
+      name: Person sensor (binary_sensor)
+      selector: { entity: { domain: binary_sensor } }
+    visitor_sensor:
+      name: Visitor/Pressed sensor (binary_sensor)
+      selector: { entity: { domain: binary_sensor } }
+    camera:
+      name: Camera entity
+      selector: { entity: { domain: camera } }
+    notify_service:
+      name: Mobile app notify service
+      description: e.g. notify.mobile_app_your_phone
+      selector: { text: {} }
+    filename_stem:
+      name: Snapshot filename stem (no extension)
+      description: e.g. "doorbell" or "office"
+      default: "camera"
+      selector: { text: {} }
+    frigate_url:
+      name: Frigate URL (PWA origin)
+      default: "https://frigate.local/"
+      selector: { text: {} }
+    reolink_uid:
+      name: Reolink UID
+      selector: { text: {} }
+    reolink_devname:
+      name: Reolink device name
+      default: "NVR"
+      selector: { text: {} }
+    reolink_channel:
+      name: Reolink channel number
+      default: 1
+      selector: { number: { min: 1, max: 32, step: 1, mode: box } }
+    snooze_timer:
+      name: Snooze timer helper
+      description: Alerts are suppressed while this timer is active.
+      selector: { entity: { domain: timer } }
+    snooze_duration:
+      name: Snooze duration
+      default: "06:00:00"
+      selector: { text: {} }
+    queue_max:
+      name: Max queued runs
+      default: 10
+      selector: { number: { min: 1, max: 50, step: 1, mode: slider } }
+
+mode: queued
+max: !input queue_max
+
+triggers:
+  - id: person
+    platform: state
+    entity_id: !input person_sensor
+    to: "on"
+  - id: visitor
+    platform: state
+    entity_id: !input visitor_sensor
+    to: "on"
+  # Button from the notification: Snooze 6h
+  - id: snooze
+    platform: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: SNOOZE_6H
+
+variables:
+  snap_rel: "/media/local/reolink/{{ !input filename_stem }}_latest.jpg"
+  snap_abs: "/media/reolink/{{ !input filename_stem }}_latest.jpg"
+  bust: "{{ (now() | as_timestamp) | int }}"
+  frigate_url: !input frigate_url
+  reolink_uid: !input reolink_uid
+  reolink_devname: !input reolink_devname
+  reolink_channel: !input reolink_channel
+  notify_service: !input notify_service
+
+# If snooze timer is active, we’ll suppress alerts (handled in choose/default path)
+conditions: []
+
+actions:
+  - choose:
+      # --- Snooze button pressed ---
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.platform == 'event' and trigger.id == 'snooze' }}"
+        sequence:
+          - service: timer.start
+            target: { entity_id: !input snooze_timer }
+            data: { duration: !input snooze_duration }
+          - service: "{{ notify_service }}"
+            data:
+              title: "Alerts snoozed"
+              message: "Notifications paused for {{ !input snooze_duration }}"
+      # --- Person/Visitor event ---
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.platform == 'state' }}"
+        sequence:
+          # If snoozed, stop here
+          - condition: template
+            value_template: "{{ states(!input snooze_timer) == 'idle' }}"
+          # Take snapshot (overwrite single file)
+          - service: camera.snapshot
+            data:
+              entity_id: !input camera
+              filename: "{{ snap_abs }}"
+          - delay: "00:00:01"
+          # Titles / deep-link type depend on which sensor fired
+          - variables:
+              almtype: "{{ 'PEOPLE' if trigger.id == 'person' else 'VISITOR' }}"
+              title: "{{ 'Door: Person' if trigger.id == 'person' else 'Door: Visitor' }}"
+              msg: "{{ 'Person detected' if trigger.id == 'person' else 'Doorbell pressed' }}"
+          - service: "{{ notify_service }}"
+            data:
+              title: "{{ title }}"
+              message: "{{ msg }}"
+              data:
+                image: "{{ snap_rel }}?v={{ bust }}"
+                clickAction: >-
+                  intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ reolink_channel }};S.ALMTIME={{ now().isoformat() }};S.ALMNAME=Detection;end
+                actions:
+                  - action: "URI"
+                    title: "Open Frigate"
+                    uri: "{{ frigate_url }}"
+                  - action: "URI"
+                    title: "Open Reolink"
+                    uri: >-
+                      intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ reolink_channel }};S.ALMTIME={{ now().isoformat() }};S.ALMNAME=Detection;end
+                  - action: "SNOOZE_6H"
+                    title: "Snooze 6h"
+    default: []
