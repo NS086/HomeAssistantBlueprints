@@ -111,7 +111,6 @@ actions:
             data:
               entity_id: !input camera
               filename: "{{ snap_abs }}"
-          - delay: "00:00:01"
           # Titles / deep-link type depend on which sensor fired
           - variables:
               almtype: "{{ 'PEOPLE' if trigger.id == 'person' else 'VISITOR' }}"
