@@ -3,9 +3,9 @@
 This blueprint is still being developed and may change or break. Please test carefully before relying on it for security notifications.
 ---
 
-## Import
+## Install
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNS086%2FHomeAssistantBlueprints%2Frefs%2Fheads%2Fmain%2FAndroidreolinkfrigate.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNS086%2FHomeAssistantBlueprints%2Frefs%2Fheads%2Fmain%2FAndroidreolinkfrigate.yaml)
 ---
 
 A reusable automation blueprint for Reolink cameras/doorbells that:
@@ -36,19 +36,6 @@ Huge thanks to **@reinaldoarrosi** for reverse-engineering the Reolink deep-link
 - Reolink **UID**, **device name**, and (if using an NVR) **channel bitmask**  
 - Camera entity and binary sensors for **person** (and optionally **visitor/pressed** for doorbells)
 
----
-
-## Install
-
-### Option A — Place file directly
-1) Create folder (if needed):  
-`/config/blueprints/automation/reolink/`  
-2) Save the blueprint file as:  
-`reolink_alert_with_snooze.yaml`  
-3) In Home Assistant: **Settings → Automations & Scenes → Blueprints → Reload Blueprints**.
-
-### Option B — Import from URL
-- Put this file in a public repo/Gist and use **Blueprints → Import Blueprint** with the **raw** URL.
 
 ---
 
