@@ -1,0 +1,177 @@
+# Reolink Camera Alert — Home Assistant Blueprint  
+**⚠️ Status: WORK IN PROGRESS. Use at your own risk.**  
+This blueprint is still being developed and may change or break. Please test carefully before relying on it for security notifications.
+
+---
+
+A reusable automation blueprint for Reolink cameras/doorbells that:
+
+- Captures a snapshot and sends it in a **Home Assistant Companion App** notification  
+- Adds **action buttons**: _Open Frigate_ and _Open Reolink_  
+- Includes a **Snooze** button (default 6 hours) using a Timer helper  
+- Uses a **single rolling file** (`*_latest.jpg`) with a cache-buster to avoid media bloat  
+- Lets you pick the **target mobile device** (no need to type `notify.mobile_app_*`)  
+- Supports **Android notification channel** name & importance  
+- Works for plain cameras (**person detect**) and doorbells (optional **visitor/pressed**)
+
+---
+
+## 🙏 Credits
+
+Huge thanks to **@reinaldoarrosi** for reverse-engineering the Reolink deep-link format and sharing it on the Home Assistant forums. This blueprint uses that intent to open the Reolink app directly to a specific camera/channel.
+
+- Forum user: **reinaldoarrosi**  
+- Post: https://community.home-assistant.io/t/reolink-how-do-i-create-a-home-assistant-notification-with-a-link-that-opens-the-reolink-camera-app/517971/17
+
+---
+
+## Requirements
+
+- Home Assistant Companion App installed on the target phone (Android or iOS)  
+- A **Timer helper** for snoozing (e.g., `timer.alert_snooze`)  
+- Reolink **UID**, **device name**, and (if using an NVR) **channel bitmask**  
+- Camera entity and binary sensors for **person** (and optionally **visitor/pressed** for doorbells)
+
+---
+
+## Install
+
+### Option A — Place file directly
+1) Create folder (if needed):  
+`/config/blueprints/automation/reolink/`  
+2) Save the blueprint file as:  
+`reolink_alert_with_snooze.yaml`  
+3) In Home Assistant: **Settings → Automations & Scenes → Blueprints → Reload Blueprints**.
+
+### Option B — Import from URL
+- Put this file in a public repo/Gist and use **Blueprints → Import Blueprint** with the **raw** URL.
+
+---
+
+## Create the Timer helper
+
+**Settings → Devices & Services → Helpers → + Create Helper → Timer**  
+Name it (e.g.) `alert_snooze` → entity id: `timer.alert_snooze`.
+
+---
+
+## Use the blueprint
+
+**Automations → Create Automation → From Blueprint → “Reolink Camera Alert…”**  
+Fill the inputs:
+
+- **Person sensor**: e.g. `binary_sensor.reolinkoffice_person`  
+- **Additional event sensors (optional)**: e.g. `binary_sensor.reolinkdoorbell_visitor` (for doorbells)  
+- **Camera entity**: e.g. `camera.reolinkoffice_fluent`  
+- **Phone to notify**: select your mobile device (integration: `mobile_app`)  
+- **Snapshot filename stem**: e.g. `office` or `doorbell`  
+- **Frigate URL**: PWA origin, e.g. `https://frigate.example.com/`  
+- **Reolink UID / Device name / Channel**: see **Reolink deep-link** below  
+- **Snooze timer**: pick `timer.alert_snooze`  
+- **Snooze duration**: default `06:00:00`  
+- **Android channel**: e.g. `Security` (created on first use; then adjust in Android settings)  
+- **Android importance**: `max | high | default | low | min`  
+- **Max queued runs**: default `10` (prevents dropped back-to-back events)
+
+---
+
+## Reolink deep-link (Android): how to fill it
+
+Thanks to @reinaldoarrosi, the Reolink app can be opened to a specific camera with this intent:
+
+```
+intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;
+S.UID=<UID>;
+S.DEVNAME=<DEVICE_NAME>;
+S.ALMTYPE=<ALARM_TYPE>;
+S.ALMCHN=<CHANNEL>;
+S.ALMNAME=Detection;
+S.ALMTIME=<ALARM_DATE>;
+end
+```
+
+**Parameters:**
+
+- `<UID>` — Reolink **camera or NVR UID**  
+- `<DEVICE_NAME>` — device name as shown in the Reolink app/NVR  
+- `<ALARM_TYPE>` — use `PEOPLE` or `VEHICLE` (any non-empty string works; keep it present)  
+- `<CHANNEL>` — **bitmask** of the NVR channel to open  
+  - Ch 1 → `1`, Ch 2 → `2`, Ch 3 → `4`, Ch 4 → `8`, … Ch **N** → `2^(N-1)`  
+  - For direct-to-camera (no NVR), set `1` and rely on the **UID** to select the device  
+- `<ALARM_DATE>` — ISO-8601 timestamp  
+  - Within ~2 minutes of “now” → **Live View**  
+  - Older → **Playback** at that time  
+  - In HA templates: `{{ now().isoformat() }}`
+
+### Example: doorbell on NVR channel 8
+
+Assume:
+- NVR UID `998877AABBCC` and name `MyNvr`  
+- Doorbell on **channel 8** → bitmask `2^(8-1) = 128`
+
+The blueprint’s **Open Reolink** action becomes:
+
+```
+intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID=998877AABBCC;S.DEVNAME=MyNvr;S.ALMTYPE=PEOPLE;S.ALMCHN=128;S.ALMNAME=Detection;S.ALMTIME={{ now().isoformat() }};end
+```
+
+---
+
+## What the blueprint does
+
+- **Triggers**: person sensor (required) and optional extra sensors (visitor/pressed). Multiple triggers are **OR**.  
+- **Mode**: `queued` (no lost events; back-to-back runs queue up).  
+- **Snooze**: pressing _Snooze 6h_ fires a `mobile_app_notification_action` event that starts the timer. While the timer is **active**, alerts are **suppressed**.  
+- **Snapshot**: `camera.snapshot` writes to `/media/reolink/<stem>_latest.jpg`, then the notification loads `/media/local/...?_cache_bust=<timestamp>` to force a fresh image while keeping only one file on disk.  
+- **Notification title**: defaults to **“Person detected at _<Camera Friendly Name>_”** (doorbells show “Doorbell pressed at …”).  
+- **Android channel**: channel is created on first use with your chosen name/importance; tune sound/vibration per-channel in Android Settings.  
+- **Action buttons**: _Open Frigate_, _Open Reolink_, and _Snooze 6h_.
+
+---
+
+## Troubleshooting
+
+- **Image not showing**  
+  - Confirm the file exists under **Media** (`/media/reolink/...`).  
+  - Ensure the Companion App can reach HA (local/VPN/remote URL).  
+  - The `?v=...` cache-buster prevents stale images.
+
+- **Buttons do nothing**  
+  - Verify the **device** chosen under “Phone to notify” matches the phone you’re testing.  
+  - On Android, confirm the Reolink app is installed and the intent scheme is supported.
+
+- **Wrong camera opens in Reolink**  
+  - Double-check the **UID** and the **channel bitmask** (`2^(N-1)`).
+
+- **Typos in intent**  
+  - Ensure **`S.ALMTIME`** (not `S.ALMTHME`) and all `S.` keys are present.
+
+- **iOS behavior**  
+  - iOS ignores Android channel settings and can handle rich images differently.
+
+---
+
+## Security & privacy tips
+
+- Avoid publishing real **UIDs**, **internal domains/IPs**, **device ids**, and camera names that reveal locations.  
+- If you share examples, use placeholders (e.g., `REOLINK_UID_EXAMPLE`, `https://frigate.example.com`).  
+- Consider a dedicated Android **“Security”** notification channel with your preferred sound/urgency.
+
+---
+
+## FAQ
+
+**Can I notify multiple phones?**  
+Yes — create multiple automation instances from the blueprint (one per device). Or extend the blueprint to accept multiple devices and loop over them.
+
+**Can I change Snooze duration per camera?**  
+Yes — set **Snooze duration** per automation instance. Share one timer for a **global** snooze, or use separate timers per camera.
+
+**Why not keep timestamped files?**  
+To avoid media sprawl. If you want history, switch to a small ring buffer (`_0.jpg…_9.jpg`) or add a nightly cleanup task.
+
+---
+
+## Changelog
+
+- **v1.0** — Initial public draft (snapshot, actions, snooze, Android channel, optional visitor trigger).
