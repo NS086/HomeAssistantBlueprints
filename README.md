@@ -1,6 +1,5 @@
 # Reolink Camera Alert — Home Assistant Blueprint for Android  
-**⚠️ Status: WORK IN PROGRESS. Use at your own risk.**  
-This blueprint is still being developed and may change or break. Please test carefully before relying on it for security notifications.
+**⚠️ Status: WORK IN PROGRESS: This blueprint is still being developed and may change or break. Please test carefully before relying on it for security notifications.
 ---
 
 ## Install
