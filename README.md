@@ -1,4 +1,4 @@
-# Reolink Camera Alert — Home Assistant Blueprint  
+# Reolink Camera Alert — Home Assistant Blueprint for Android  
 **⚠️ Status: WORK IN PROGRESS. Use at your own risk.**  
 This blueprint is still being developed and may change or break. Please test carefully before relying on it for security notifications.
 
@@ -27,7 +27,7 @@ Huge thanks to **@reinaldoarrosi** for reverse-engineering the Reolink deep-link
 
 ## Requirements
 
-- Home Assistant Companion App installed on the target phone (Android or iOS)  
+- Home Assistant Companion App installed on the target phone (Android) 
 - A **Timer helper** for snoozing (e.g., `timer.alert_snooze`)  
 - Reolink **UID**, **device name**, and (if using an NVR) **channel bitmask**  
 - Camera entity and binary sensors for **person** (and optionally **visitor/pressed** for doorbells)
@@ -146,8 +146,6 @@ intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.inte
 - **Typos in intent**  
   - Ensure **`S.ALMTIME`** (not `S.ALMTHME`) and all `S.` keys are present.
 
-- **iOS behavior**  
-  - iOS ignores Android channel settings and can handle rich images differently.
 
 ---
 
