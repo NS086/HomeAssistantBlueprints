@@ -166,18 +166,17 @@ actions:
               entity_id: "{{ snooze_timer_entity }}"
             data:
               duration: "{{ snooze_duration_text }}"
-          # Acknowledge to ALL selected devices
+          # Acknowledge to ALL selected devices using templated notify service
           - repeat:
               for_each: "{{ notify_ids_list }}"
               sequence:
-                - device_id: "{{ repeat.item }}"
-                  domain: mobile_app
-                  type: notify
-                  title: "Alerts snoozed"
-                  message: "{{ 'Notifications paused for ' ~ snooze_duration_text }}"
+                - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
                   data:
-                    channel: "{{ android_channel_var }}"
-                    importance: "{{ android_importance_var }}"
+                    title: "Alerts snoozed"
+                    message: "{{ 'Notifications paused for ' ~ snooze_duration_text }}"
+                    data:
+                      channel: "{{ android_channel_var }}"
+                      importance: "{{ android_importance_var }}"
 
       # --- Person or extra sensor event ---
       - conditions:
@@ -205,29 +204,28 @@ actions:
                 {{ custom_title_text if custom_title_text | trim != '' else title_default }}
               msg: "{{ 'Person detected' if trigger.id == 'person' else 'Doorbell pressed' }}"
 
-          # Send the notification to EACH selected device
+          # Send the notification to EACH selected device using templated notify service
           - repeat:
               for_each: "{{ notify_ids_list }}"
               sequence:
-                - device_id: "{{ repeat.item }}"
-                  domain: mobile_app
-                  type: notify
-                  title: "{{ title_final }}"
-                  message: "{{ msg }}"
+                - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
                   data:
-                    image: "{{ snap_rel }}?v={{ bust }}"
-                    channel: "{{ android_channel_var }}"
-                    importance: "{{ android_importance_var }}"
-                    clickAction: >-
-                      intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ reolink_channel }};S.ALMTIME={{ now().isoformat() }};S.ALMNAME=Detection;end
-                    actions:
-                      - action: "URI"
-                        title: "Open Frigate"
-                        uri: "{{ frigate_url }}"
-                      - action: "URI"
-                        title: "Open Reolink"
-                        uri: >-
-                          intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ reolink_channel }};S.ALMTIME={{ now().isoformat() }};S.ALMNAME=Detection;end
-                      - action: "SNOOZE_6H"
-                        title: "Snooze 6h"
+                    title: "{{ title_final }}"
+                    message: "{{ msg }}"
+                    data:
+                      image: "{{ snap_rel }}?v={{ bust }}"
+                      channel: "{{ android_channel_var }}"
+                      importance: "{{ android_importance_var }}"
+                      clickAction: >-
+                        intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ reolink_channel }};S.ALMTIME={{ now().isoformat() }};S.ALMNAME=Detection;end
+                      actions:
+                        - action: "URI"
+                          title: "Open Frigate"
+                          uri: "{{ frigate_url }}"
+                        - action: "URI"
+                          title: "Open Reolink"
+                          uri: >-
+                            intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ reolink_channel }};S.ALMTIME={{ now().isoformat() }};S.ALMNAME=Detection;end
+                        - action: "SNOOZE_6H"
+                          title: "Snooze 6h"
     default: []
