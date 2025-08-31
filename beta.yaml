@@ -85,7 +85,7 @@ blueprint:
 
     enable_open_url_button:
       name: Show "Open URL" button (optional)
-      description: Toggle ON to show; then set the URL below.
+      description: Toggle ON to show; then set the URL and label below.
       default: false
       selector: { boolean: {} }
 
@@ -93,6 +93,12 @@ blueprint:
       name: URL to open (for "Open URL" button)
       description: Optional. Ignored if the toggle above is OFF or if left blank.
       default: ""
+      selector: { text: {} }
+
+    open_url_title:
+      name: "Open URL" button label
+      description: Text shown on the Open URL action button (optional).
+      default: "Open URL"
       selector: { text: {} }
 
     # --- Snooze settings ---
@@ -193,6 +199,7 @@ variables:
   enable_reolink_button_var: !input enable_reolink_button
   enable_open_url_button_var: !input enable_open_url_button
   open_url_text: !input open_url
+  open_url_title_text: !input open_url_title
 
   # Computed
   cam_name: "{{ state_attr(camera_entity, 'friendly_name') or camera_entity }}"
@@ -270,7 +277,7 @@ actions:
               actions_list: >-
                 {% set items = [] %}
                 {% if enable_open_url_button_var and (open_url_text | trim) != '' %}
-                  {% set items = items + [ {'action':'URI','title':'Open URL','uri': open_url_text} ] %}
+                  {% set items = items + [ {'action':'URI','title': open_url_title_text,'uri': open_url_text} ] %}
                 {% endif %}
                 {% if enable_reolink_button_var %}
                   {% set items = items + [ {'action':'URI','title':'Open Reolink','uri': intent_uri} ] %}
