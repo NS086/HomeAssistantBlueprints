@@ -2,7 +2,7 @@
 **⚠️ Status: WORK IN PROGRESS: This blueprint is still being developed and may change or break. Please test carefully before relying on it for security notifications.
 ---
 
-## Install 
+## Install (Still a WiP but less changes compated to the beta)
 
 [![Open your Home Assistant instance and show the blueprint import dialog](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNS086%2FHomeAssistantBlueprints%2Frefs%2Fheads%2Fmain%2FAndroidreolinkfrigate.yaml)
 
@@ -27,11 +27,14 @@ A reusable automation blueprint for Reolink cameras/doorbells that:
 
 ## 🙏 Credits
 
-Huge thanks to **@reinaldoarrosi** for reverse-engineering the Reolink deep-link format and sharing it on the Home Assistant forums. This blueprint uses that intent to open the Reolink app directly to a specific camera/channel.
+Huge thanks to **reinaldoarrosi** for reverse-engineering the Reolink deep-link format and sharing it on the Home Assistant forums. This blueprint uses that intent to open the Reolink app directly to a specific camera/channel.
 
 - Forum user: **reinaldoarrosi**  
 - Post: https://community.home-assistant.io/t/reolink-how-do-i-create-a-home-assistant-notification-with-a-link-that-opens-the-reolink-camera-app/517971/17
 
+Huge thanks to **SgtBatten** whos frigate blueprint was used as inspiration for this
+- Github user: SgtBatten
+- Github Url: https://github.com/SgtBatten/
 ---
 
 ## Requirements
