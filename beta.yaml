@@ -53,7 +53,7 @@ blueprint:
       default: "camera"
       selector: { text: {} }
 
-    # Notification icon (MDI) for Companion App notifications
+    # Top-level notification icon (MDI) for Companion App
     notification_icon_mdi:
       name: Notification icon (mdi)
       description: MDI icon like "mdi:cctv". Clear to use the app default. (optional)
@@ -81,15 +81,13 @@ blueprint:
     enable_reolink_button:
       name: Show "Open Reolink" button (optional)
       default: true
-      selector:
-        boolean: {}
+      selector: { boolean: {} }
 
     enable_open_url_button:
       name: Show "Open URL" button (optional)
       description: Toggle ON to show; then set the URL below.
       default: false
-      selector:
-        boolean: {}
+      selector: { boolean: {} }
 
     open_url:
       name: URL to open (for "Open URL" button)
@@ -112,20 +110,19 @@ blueprint:
     show_snooze_button:
       name: Show Snooze button (optional)
       default: true
-      selector:
-        boolean: {}
+      selector: { boolean: {} }
 
     snooze_label:
       name: Snooze button label (optional)
-      description: Leave blank to hide text (icon only, if supported).
+      description: Leave blank to show icon-only (Android only).
       default: ""
       selector: { text: {} }
 
-    snooze_icon:
-      name: Snooze button icon (mdi)
-      description: e.g., mdi:bell-sleep-outline
-      default: "mdi:bell-sleep-outline"
-      selector: { icon: {} }
+    snooze_icon_android:
+      name: Snooze button icon (Android drawable name)
+      description: Examples: snooze, alarm_off, notifications_off. (Not mdi)
+      default: "snooze"
+      selector: { text: {} }
 
     # Android channel settings
     android_channel:
@@ -171,7 +168,7 @@ triggers:
     event_data:
       action: SNOOZE_6H
 
-# Map inputs to variables for Jinja use
+# Map inputs to variables for templating
 variables:
   filename_stem_var: !input filename_stem
   reolink_uid: !input reolink_uid
@@ -191,7 +188,7 @@ variables:
 
   show_snooze_button_var: !input show_snooze_button
   snooze_label_text: !input snooze_label
-  snooze_icon_var: !input snooze_icon
+  snooze_icon_android_var: !input snooze_icon_android
 
   enable_reolink_button_var: !input enable_reolink_button
   enable_open_url_button_var: !input enable_open_url_button
@@ -230,7 +227,7 @@ actions:
               sequence:
                 - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
                   data:
-                    title: ""   # ack title empty
+                    title: ""
                     message: "{{ 'Notifications paused for ' ~ snooze_duration_text }}"
                     data:
                       channel: "{{ android_channel_var }}"
@@ -266,27 +263,9 @@ actions:
                      | replace('{camera_name}', cam_name)
                      | replace('{event}', event_text) }}
                 {% endif %}
+              # Single-line intent URI (no line breaks!)
               intent_uri: >-
-                intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;
-                S.UID={{ reolink_uid }};
-                S.DEVNAME={{ reolink_devname }};
-                S.ALMTYPE={{ almtype }};
-                S.ALMCHN={{ channel_mask }};
-                S.ALMNAME=Detection;
-                S.ALMTIME={{ now().isoformat() }};
-                end
-              actions_list: >-
-                {%- set a = [] -%}
-                {%- if enable_open_url_button_var and (open_url_text | trim) != '' -%}
-                  {%- set a = a + [ {'action':'URI','title':'Open URL','uri': open_url_text} ] -%}
-                {%- endif -%}
-                {%- if enable_reolink_button_var -%}
-                  {%- set a = a + [ {'action':'URI','title':'Open Reolink','uri': intent_uri} ] -%}
-                {%- endif -%}
-                {%- if show_snooze_button_var -%}
-                  {%- set a = a + [ {'action':'SNOOZE_6H','title': (snooze_label_text or ''), 'icon': (snooze_icon_var or '')} ] -%}
-                {%- endif -%}
-                {{ a }}
+                intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ channel_mask }};S.ALMNAME=Detection;S.ALMTIME={{ now().isoformat() }};end
 
           - repeat:
               for_each: "{{ notify_ids_list }}"
@@ -301,5 +280,21 @@ actions:
                       importance: "{{ android_importance_var }}"
                       notification_icon: "{{ notification_icon_mdi_var }}"
                       clickAction: "{{ intent_uri }}"
-                      actions: "{{ actions_list }}"
+                      # Build actions inline to avoid null/empty issues
+                      actions:
+                        {% if enable_open_url_button_var and (open_url_text | trim) != '' %}
+                        - action: URI
+                          title: Open URL
+                          uri: "{{ open_url_text }}"
+                        {% endif %}
+                        {% if enable_reolink_button_var %}
+                        - action: URI
+                          title: Open Reolink
+                          uri: "{{ intent_uri }}"
+                        {% endif %}
+                        {% if show_snooze_button_var %}
+                        - action: SNOOZE_6H
+                          title: "{{ snooze_label_text if (snooze_label_text | trim) != '' else ' ' }}"
+                          icon: "{{ snooze_icon_android_var }}"
+                        {% endif %}
     default: []
