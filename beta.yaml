@@ -1,7 +1,7 @@
 blueprint:
   name: Reolink Camera Alert with Snapshot, Actions & Snooze
   description: >
-    Snapshot notification with optional buttons (Open Frigate / Open Reolink) and a 6h
+    Snapshot notification with optional buttons (Open URL / Open Reolink) and a 6h
     Snooze. Uses a single rolling snapshot file to avoid buildup. Requires a
     Person sensor; optional extra sensors (e.g., doorbell "visitor/pressed").
     Lets you select one or more mobile devices to notify. Title is empty by default;
@@ -48,14 +48,9 @@ blueprint:
     # Notification icon (MDI) for Companion App notifications
     notification_icon_mdi:
       name: Notification icon (mdi)
-      description: MDI icon name like "mdi:cctv". Clear to use the app default.
+      description: MDI icon like "mdi:cctv". Clear to use the app default. (optional)
       default: "mdi:cctv"
       selector: { icon: {} }
-
-    frigate_url:
-      name: Frigate URL (PWA origin)
-      default: "https://frigate.local/"
-      selector: { text: {} }
 
     # --- Reolink deep-link params ---
     reolink_uid:
@@ -74,6 +69,26 @@ blueprint:
       selector:
         number: { min: 1, max: 32, step: 1, mode: box }
 
+    # --- Action buttons (grouped) ---
+    enable_reolink_button:
+      name: Show "Open Reolink" button (optional)
+      default: true
+      selector:
+        boolean: {}
+
+    enable_open_url_button:
+      name: Show "Open URL" button (optional)
+      description: Toggle ON to show; then set the URL below.
+      default: false
+      selector:
+        boolean: {}
+
+    open_url:
+      name: URL to open (for "Open URL" button)
+      description: Optional. Ignored if the toggle above is OFF or if left blank.
+      default: ""
+      selector: { text: {} }
+
     # --- Snooze settings ---
     snooze_timer:
       name: Snooze timer helper
@@ -86,9 +101,8 @@ blueprint:
       default: "06:00:00"
       selector: { text: {} }
 
-    # Snooze button appearance/visibility
     show_snooze_button:
-      name: Show Snooze button
+      name: Show Snooze button (optional)
       default: true
       selector:
         boolean: {}
@@ -104,19 +118,6 @@ blueprint:
       description: e.g., mdi:bell-sleep-outline
       default: "mdi:bell-sleep-outline"
       selector: { icon: {} }
-
-    # --- Optional action buttons ---
-    enable_frigate_button:
-      name: Show "Open Frigate" button
-      default: true
-      selector:
-        boolean: {}
-
-    enable_reolink_button:
-      name: Show "Open Reolink" button
-      default: true
-      selector:
-        boolean: {}
 
     # Android channel settings
     android_channel:
@@ -165,7 +166,6 @@ triggers:
 # Map inputs to variables for Jinja use
 variables:
   filename_stem_var: !input filename_stem
-  frigate_url: !input frigate_url
   reolink_uid: !input reolink_uid
   reolink_devname: !input reolink_devname
   nvr_channel_index_var: !input nvr_channel_index
@@ -184,8 +184,9 @@ variables:
   snooze_label_text: !input snooze_label
   snooze_icon_var: !input snooze_icon
 
-  enable_frigate_button_var: !input enable_frigate_button
   enable_reolink_button_var: !input enable_reolink_button
+  enable_open_url_button_var: !input enable_open_url_button
+  open_url_text: !input open_url
 
   # Computed
   cam_name: "{{ state_attr(camera_entity, 'friendly_name') or camera_entity }}"
@@ -261,8 +262,8 @@ actions:
                 end
               actions_list: >-
                 {%- set a = [] -%}
-                {%- if enable_frigate_button_var -%}
-                  {%- set a = a + [ {'action':'URI','title':'Open Frigate','uri': frigate_url} ] -%}
+                {%- if enable_open_url_button_var and (open_url_text | trim) != '' -%}
+                  {%- set a = a + [ {'action':'URI','title':'Open URL','uri': open_url_text} ] -%}
                 {%- endif -%}
                 {%- if enable_reolink_button_var -%}
                   {%- set a = a + [ {'action':'URI','title':'Open Reolink','uri': intent_uri} ] -%}
