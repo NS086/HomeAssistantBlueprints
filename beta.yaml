@@ -97,7 +97,7 @@ blueprint:
 
     open_url_title:
       name: "Open URL" button label
-      description: Text shown on the Open URL action button (optional).
+      description: Text shown on the Open URL action button.
       default: "Open URL"
       selector: { text: {} }
 
