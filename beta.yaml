@@ -5,7 +5,7 @@ blueprint:
     Snooze. Uses a single rolling snapshot file to avoid buildup. Requires a
     Person sensor; optional extra sensors (e.g., doorbell "visitor/pressed").
     Lets you select one or more mobile devices to notify. Title is empty by default;
-    message shows “Person detected at <Camera>”. NVR channel math is automatic (enter 1–32).
+    message defaults to “Person detected at <Camera>”. NVR channel math is automatic (enter 1–32).
   domain: automation
   input:
     person_sensor:
@@ -37,6 +37,14 @@ blueprint:
     custom_title:
       name: Custom notification title (optional)
       description: Leave blank to keep the title empty (default).
+      default: ""
+      selector: { text: {} }
+
+    custom_message:
+      name: Custom notification text (optional)
+      description: >
+        Use placeholders: {camera_name}, {event}. Leave blank to use the default:
+        "Person detected at {camera_name}".
       default: ""
       selector: { text: {} }
 
@@ -178,6 +186,7 @@ variables:
   android_importance_var: !input android_importance
   camera_entity: !input camera
   custom_title_text: !input custom_title
+  custom_message_text: !input custom_message
   notification_icon_mdi_var: !input notification_icon_mdi
 
   show_snooze_button_var: !input show_snooze_button
@@ -221,7 +230,7 @@ actions:
               sequence:
                 - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
                   data:
-                    title: ""   # keep title empty on ack
+                    title: ""   # ack title empty
                     message: "{{ 'Notifications paused for ' ~ snooze_duration_text }}"
                     data:
                       channel: "{{ android_channel_var }}"
@@ -245,12 +254,18 @@ actions:
           # Per-event variables
           - variables:
               almtype: "{{ 'PEOPLE' if trigger.id == 'person' else 'VISITOR' }}"
-              # Title is empty by default unless custom_title provided
               title_final: "{{ custom_title_text | trim }}"
-              # Message is the main line with camera name
-              msg: >-
-                {{ 'Person detected at ' ~ cam_name if trigger.id == 'person'
-                   else 'Doorbell pressed at ' ~ cam_name }}
+              event_text: "{{ 'Person detected' if trigger.id == 'person' else 'Doorbell pressed' }}"
+              msg_default: "{{ 'Person detected at ' ~ cam_name }}"
+              msg_final: >-
+                {% set base = custom_message_text | trim %}
+                {% if base == '' %}
+                  {{ msg_default }}
+                {% else %}
+                  {{ base
+                     | replace('{camera_name}', cam_name)
+                     | replace('{event}', event_text) }}
+                {% endif %}
               intent_uri: >-
                 intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;
                 S.UID={{ reolink_uid }};
@@ -279,7 +294,7 @@ actions:
                 - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
                   data:
                     title: "{{ title_final }}"
-                    message: "{{ msg }}"
+                    message: "{{ msg_final }}"
                     data:
                       image: "{{ snap_rel }}?v={{ bust }}"
                       channel: "{{ android_channel_var }}"
