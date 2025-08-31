@@ -1,0 +1,309 @@
+blueprint:
+  name: Reolink Camera Alert with Snapshot, Actions & Snooze
+  description: >
+    Snapshot notification with buttons (Open Frigate / Open Reolink) and a 6h
+    Snooze. Uses a single rolling snapshot file to avoid buildup. Requires a
+    Person sensor; optional extra sensors (e.g., doorbell "visitor/pressed").
+    Lets you select one or more mobile devices to notify. Title can be overridden.
+    Frigate/Reolink buttons are optional; Snooze can be an icon; NVR channel math auto-converts.
+  domain: automation
+  input:
+    person_sensor:
+      name: Person sensor (binary_sensor)
+      selector:
+        entity: { domain: binary_sensor }
+
+    extra_sensors:
+      name: Additional event sensors (optional)
+      description: Add doorbell visitor/pressed here; leave empty for cameras.
+      default: []
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
+
+    camera:
+      name: Camera entity
+      selector:
+        entity: { domain: camera }
+
+    notify_devices:
+      name: Phones to notify
+      selector:
+        device:
+          integration: mobile_app
+          multiple: true
+
+    custom_title:
+      name: Custom notification title (optional)
+      description: >
+        If set, this text will be used as the notification title for all events.
+        Leave blank to use the default dynamic title (e.g., "Person detected at <Camera>").
+      default: ""
+      selector: { text: {} }
+
+    filename_stem:
+      name: Snapshot filename stem (no extension)
+      default: "camera"
+      selector: { text: {} }
+
+    frigate_url:
+      name: Frigate URL (PWA origin)
+      default: "https://frigate.local/"
+      selector: { text: {} }
+
+    # --- Reolink deep-link params ---
+    reolink_uid:
+      name: Reolink UID
+      selector: { text: {} }
+
+    reolink_devname:
+      name: Reolink device name
+      default: "NVR"
+      selector: { text: {} }
+
+    # Choose how to provide the NVR channel: index (1..32) or raw bitmask
+    nvr_channel_mode:
+      name: NVR channel input mode
+      default: index
+      selector:
+        select:
+          options:
+            - index
+            - bitmask
+          mode: dropdown
+
+    nvr_channel_index:
+      name: NVR channel number (1–32)
+      description: The channel number as listed on your NVR (use 1 for direct cameras).
+      default: 1
+      selector:
+        number: { min: 1, max: 32, step: 1, mode: box }
+
+    reolink_channel_bitmask:
+      name: NVR channel bitmask (advanced)
+      description: Only used if input mode is "bitmask".
+      default: 1
+      selector:
+        number: { min: 1, max: 2_147_483_648, step: 1, mode: box }
+
+    # --- Snooze settings ---
+    snooze_timer:
+      name: Snooze timer helper
+      description: Alerts are suppressed while this timer is active.
+      selector:
+        entity: { domain: timer }
+
+    snooze_duration:
+      name: Snooze duration
+      default: "06:00:00"
+      selector: { text: {} }
+
+    # Snooze button appearance/visibility
+    show_snooze_button:
+      name: Show Snooze button
+      default: true
+      selector:
+        boolean: {}
+
+    snooze_label:
+      name: Snooze button label (optional)
+      description: Leave blank to hide text (icon only, if supported by device).
+      default: "Snooze 6h"
+      selector: { text: {} }
+
+    snooze_icon:
+      name: Snooze button icon (Android only)
+      description: e.g., mdi:bell-sleep-outline
+      default: "mdi:bell-sleep-outline"
+      selector: { text: {} }
+
+    # --- Optional action buttons ---
+    enable_frigate_button:
+      name: Show "Open Frigate" button
+      default: true
+      selector:
+        boolean: {}
+
+    enable_reolink_button:
+      name: Show "Open Reolink" button
+      default: true
+      selector:
+        boolean: {}
+
+    # Android channel settings
+    android_channel:
+      name: Android notification channel name
+      default: "Security"
+      selector: { text: {} }
+
+    android_importance:
+      name: Android channel importance
+      default: "high"
+      selector:
+        select:
+          options: [max, high, default, low, min]
+
+    queue_max:
+      name: Max queued runs
+      default: 10
+      selector:
+        number: { min: 1, max: 50, step: 1, mode: slider }
+
+mode: queued
+max: !input queue_max
+
+triggers:
+  - id: person
+    platform: state
+    entity_id: !input person_sensor
+    to: "on"
+
+  - id: visitor
+    platform: template
+    value_template: >-
+      {% set ents = expand(extra_sensors_list) %}
+      {% if ents | length == 0 %}
+        false
+      {% else %}
+        {{ (ents | selectattr('state','eq','on') | list | length) > 0 }}
+      {% endif %}
+
+  - id: snooze
+    platform: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: SNOOZE_6H
+
+# Map inputs to variables for Jinja use
+variables:
+  filename_stem_var: !input filename_stem
+  frigate_url: !input frigate_url
+  reolink_uid: !input reolink_uid
+  reolink_devname: !input reolink_devname
+
+  nvr_channel_mode_var: !input nvr_channel_mode
+  nvr_channel_index_var: !input nvr_channel_index
+  reolink_channel_bitmask_var: !input reolink_channel_bitmask
+
+  snooze_timer_entity: !input snooze_timer
+  extra_sensors_list: !input extra_sensors
+  snooze_duration_text: !input snooze_duration
+  notify_device_ids: !input notify_devices
+  android_channel_var: !input android_channel
+  android_importance_var: !input android_importance
+  camera_entity: !input camera
+  custom_title_text: !input custom_title
+
+  show_snooze_button_var: !input show_snooze_button
+  snooze_label_text: !input snooze_label
+  snooze_icon_var: !input snooze_icon
+
+  enable_frigate_button_var: !input enable_frigate_button
+  enable_reolink_button_var: !input enable_reolink_button
+
+  # Computed
+  cam_name: "{{ state_attr(camera_entity, 'friendly_name') or camera_entity }}"
+  snap_rel: "{{ '/media/local/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
+  snap_abs: "{{ '/media/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
+  bust: "{{ (now() | as_timestamp) | int }}"
+  notify_ids_list: >-
+    {{ notify_device_ids if notify_device_ids is iterable else [notify_device_ids] }}
+
+  # Compute channel bitmask from index if requested
+  channel_mask: >-
+    {% if nvr_channel_mode_var == 'index' %}
+      {{ (2 ** (nvr_channel_index_var | int - 1)) | int }}
+    {% else %}
+      {{ reolink_channel_bitmask_var | int }}
+    {% endif %}
+
+conditions: []
+
+actions:
+  - choose:
+      # --- Snooze button pressed (only accept from selected devices) ---
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ trigger.platform == 'event'
+                 and trigger.id == 'snooze'
+                 and (trigger.event.data.device_id in notify_ids_list) }}
+        sequence:
+          - service: timer.start
+            target:
+              entity_id: "{{ snooze_timer_entity }}"
+            data:
+              duration: "{{ snooze_duration_text }}"
+          - repeat:
+              for_each: "{{ notify_ids_list }}"
+              sequence:
+                - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
+                  data:
+                    title: "Alerts snoozed"
+                    message: "{{ 'Notifications paused for ' ~ snooze_duration_text }}"
+                    data:
+                      channel: "{{ android_channel_var }}"
+                      importance: "{{ android_importance_var }}"
+
+      # --- Person or extra sensor event ---
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.platform in ['state','template'] }}"
+        sequence:
+          - condition: template
+            value_template: "{{ is_state(snooze_timer_entity, 'idle') }}"
+
+          - service: camera.snapshot
+            data:
+              entity_id: !input camera
+              filename: "{{ snap_abs }}"
+          - delay: "00:00:01"
+
+          # Per-event variables
+          - variables:
+              almtype: "{{ 'PEOPLE' if trigger.id == 'person' else 'VISITOR' }}"
+              title_default: >-
+                {{ 'Person detected at ' ~ cam_name if trigger.id == 'person'
+                   else 'Doorbell pressed at ' ~ cam_name }}
+              title_final: >-
+                {{ custom_title_text if custom_title_text | trim != '' else title_default }}
+              msg: "{{ 'Person detected' if trigger.id == 'person' else 'Doorbell pressed' }}"
+              # Build the Reolink intent (uses computed channel_mask)
+              intent_uri: >-
+                intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;
+                S.UID={{ reolink_uid }};
+                S.DEVNAME={{ reolink_devname }};
+                S.ALMTYPE={{ almtype }};
+                S.ALMCHN={{ channel_mask }};
+                S.ALMNAME=Detection;
+                S.ALMTIME={{ now().isoformat() }};
+                end
+              # Build the actions array based on toggles
+              actions_list: >-
+                {%- set a = [] -%}
+                {%- if enable_frigate_button_var -%}
+                  {%- set a = a + [ {'action':'URI','title':'Open Frigate','uri': frigate_url} ] -%}
+                {%- endif -%}
+                {%- if enable_reolink_button_var -%}
+                  {%- set a = a + [ {'action':'URI','title':'Open Reolink','uri': intent_uri} ] -%}
+                {%- endif -%}
+                {%- if show_snooze_button_var -%}
+                  {%- set a = a + [ {'action':'SNOOZE_6H','title': (snooze_label_text or ''), 'icon': (snooze_icon_var or '')} ] -%}
+                {%- endif -%}
+                {{ a }}
+
+          - repeat:
+              for_each: "{{ notify_ids_list }}"
+              sequence:
+                - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
+                  data:
+                    title: "{{ title_final }}"
+                    message: "{{ msg }}"
+                    data:
+                      image: "{{ snap_rel }}?v={{ bust }}"
+                      channel: "{{ android_channel_var }}"
+                      importance: "{{ android_importance_var }}"
+                      clickAction: "{{ intent_uri }}"
+                      actions: "{{ actions_list }}"
+    default: []
