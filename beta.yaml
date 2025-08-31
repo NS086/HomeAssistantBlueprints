@@ -77,10 +77,15 @@ blueprint:
       selector:
         number: { min: 1, max: 32, step: 1, mode: box }
 
-    # --- Action buttons ---
+    # --- Action buttons (grouped) ---
+    enable_reolink_button:
+      name: Show "Open Reolink" button (optional)
+      default: true
+      selector: { boolean: {} }
+
     enable_open_url_button:
       name: Show "Open URL" button (optional)
-      description: Toggle ON to show; then set the URL and label below.
+      description: Toggle ON to show; then set the URL below.
       default: false
       selector: { boolean: {} }
 
@@ -90,10 +95,16 @@ blueprint:
       default: ""
       selector: { text: {} }
 
-    open_url_title:
-      name: "Open URL" button label
-      description: Text shown on the Open URL action button.
-      default: "Open URL"
+    # --- Snooze settings ---
+    snooze_timer:
+      name: Snooze timer helper
+      description: Alerts are suppressed while this timer is active.
+      selector:
+        entity: { domain: timer }
+
+    snooze_duration:
+      name: Snooze duration
+      default: "06:00:00"
       selector: { text: {} }
 
     show_snooze_button:
@@ -112,18 +123,6 @@ blueprint:
       description: e.g., mdi:bell-sleep-outline
       default: "mdi:bell-sleep-outline"
       selector: { icon: {} }
-
-    # Snooze timer settings
-    snooze_timer:
-      name: Snooze timer helper
-      description: Alerts are suppressed while this timer is active.
-      selector:
-        entity: { domain: timer }
-
-    snooze_duration:
-      name: Snooze duration
-      default: "06:00:00"
-      selector: { text: {} }
 
     # Android channel settings
     android_channel:
@@ -169,7 +168,7 @@ triggers:
     event_data:
       action: SNOOZE_6H
 
-# Variables
+# Map inputs to variables for templating
 variables:
   filename_stem_var: !input filename_stem
   reolink_uid: !input reolink_uid
@@ -187,14 +186,15 @@ variables:
   custom_message_text: !input custom_message
   notification_icon_mdi_var: !input notification_icon_mdi
 
-  enable_open_url_button_var: !input enable_open_url_button
-  open_url_text: !input open_url
-  open_url_title_text: !input open_url_title
-
   show_snooze_button_var: !input show_snooze_button
   snooze_label_text: !input snooze_label
   snooze_icon_mdi_var: !input snooze_icon_mdi
 
+  enable_reolink_button_var: !input enable_reolink_button
+  enable_open_url_button_var: !input enable_open_url_button
+  open_url_text: !input open_url
+
+  # Computed
   cam_name: "{{ state_attr(camera_entity, 'friendly_name') or camera_entity }}"
   snap_rel: "{{ '/media/local/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
   snap_abs: "{{ '/media/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
@@ -202,13 +202,14 @@ variables:
   notify_ids_list: >-
     {{ notify_device_ids if notify_device_ids is iterable else [notify_device_ids] }}
 
+  # Compute channel bitmask from channel index (1..32)
   channel_mask: "{{ (2 ** (nvr_channel_index_var | int - 1)) | int }}"
 
 conditions: []
 
 actions:
   - choose:
-      # Snooze pressed from selected device(s)
+      # --- Snooze button pressed (only accept from selected devices) ---
       - conditions:
           - condition: template
             value_template: >-
@@ -217,8 +218,10 @@ actions:
                  and (trigger.event.data.device_id in notify_ids_list) }}
         sequence:
           - service: timer.start
-            target: { entity_id: "{{ snooze_timer_entity }}" }
-            data: { duration: "{{ snooze_duration_text }}" }
+            target:
+              entity_id: "{{ snooze_timer_entity }}"
+            data:
+              duration: "{{ snooze_duration_text }}"
           - repeat:
               for_each: "{{ notify_ids_list }}"
               sequence:
@@ -231,7 +234,7 @@ actions:
                       importance: "{{ android_importance_var }}"
                       notification_icon: "{{ notification_icon_mdi_var }}"
 
-      # Main alert
+      # --- Person or extra sensor event ---
       - conditions:
           - condition: template
             value_template: "{{ trigger.platform in ['state','template'] }}"
@@ -245,6 +248,7 @@ actions:
               filename: "{{ snap_abs }}"
           - delay: "00:00:01"
 
+          # Per-event variables
           - variables:
               almtype: "{{ 'PEOPLE' if trigger.id == 'person' else 'VISITOR' }}"
               title_final: "{{ custom_title_text | trim }}"
@@ -259,98 +263,36 @@ actions:
                      | replace('{camera_name}', cam_name)
                      | replace('{event}', event_text) }}
                 {% endif %}
+              # Single-line Reolink intent (for tap + button)
               intent_uri: >-
                 intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ channel_mask }};S.ALMNAME=Detection;S.ALMTIME={{ now().isoformat() }};end
+              # Build actions as a proper list (no nulls)
+              actions_list: >-
+                {% set items = [] %}
+                {% if enable_open_url_button_var and (open_url_text | trim) != '' %}
+                  {% set items = items + [ {'action':'URI','title':'Open URL','uri': open_url_text} ] %}
+                {% endif %}
+                {% if enable_reolink_button_var %}
+                  {% set items = items + [ {'action':'URI','title':'Open Reolink','uri': intent_uri} ] %}
+                {% endif %}
+                {% if show_snooze_button_var %}
+                  {% set label = (snooze_label_text | trim) if (snooze_label_text | trim) != '' else 'Snooze' %}
+                  {% set items = items + [ {'action':'SNOOZE_6H','title': label,'icon': snooze_icon_mdi_var} ] %}
+                {% endif %}
+                {{ items }}
 
           - repeat:
               for_each: "{{ notify_ids_list }}"
               sequence:
-                - choose:
-                    # URL ON + Snooze ON
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ enable_open_url_button_var and (open_url_text | trim) != '' and show_snooze_button_var }}"
-                      sequence:
-                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              image: "{{ snap_rel }}?v={{ bust }}"
-                              channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
-                              notification_icon: "{{ notification_icon_mdi_var }}"
-                              clickAction: "{{ intent_uri }}"
-                              actions:
-                                - action: URI
-                                  title: "{{ open_url_title_text }}"
-                                  uri: "{{ open_url_text }}"
-                                - action: URI
-                                  title: Open Reolink
-                                  uri: "{{ intent_uri }}"
-                                - action: SNOOZE_6H
-                                  title: "{{ (snooze_label_text | trim) if (snooze_label_text | trim) != '' else 'Snooze' }}"
-                                  icon: "{{ snooze_icon_mdi_var }}"
-
-                    # URL ON + Snooze OFF
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ enable_open_url_button_var and (open_url_text | trim) != '' and not show_snooze_button_var }}"
-                      sequence:
-                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              image: "{{ snap_rel }}?v={{ bust }}"
-                              channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
-                              notification_icon: "{{ notification_icon_mdi_var }}"
-                              clickAction: "{{ intent_uri }}"
-                              actions:
-                                - action: URI
-                                  title: "{{ open_url_title_text }}"
-                                  uri: "{{ open_url_text }}"
-                                - action: URI
-                                  title: Open Reolink
-                                  uri: "{{ intent_uri }}"
-
-                    # URL OFF + Snooze ON
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ (not enable_open_url_button_var) or (open_url_text | trim) == '' and show_snooze_button_var }}"
-                      sequence:
-                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              image: "{{ snap_rel }}?v={{ bust }}"
-                              channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
-                              notification_icon: "{{ notification_icon_mdi_var }}"
-                              clickAction: "{{ intent_uri }}"
-                              actions:
-                                - action: URI
-                                  title: Open Reolink
-                                  uri: "{{ intent_uri }}"
-                                - action: SNOOZE_6H
-                                  title: "{{ (snooze_label_text | trim) if (snooze_label_text | trim) != '' else 'Snooze' }}"
-                                  icon: "{{ snooze_icon_mdi_var }}"
-
-                    # URL OFF + Snooze OFF
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ (not enable_open_url_button_var) or (open_url_text | trim) == '' and not show_snooze_button_var }}"
-                      sequence:
-                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              image: "{{ snap_rel }}?v={{ bust }}"
-                              channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
-                              notification_icon: "{{ notification_icon_mdi_var }}"
-                              clickAction: "{{ intent_uri }}"
+                - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
+                  data:
+                    title: "{{ title_final }}"
+                    message: "{{ msg_final }}"
+                    data:
+                      image: "{{ snap_rel }}?v={{ bust }}"
+                      channel: "{{ android_channel_var }}"
+                      importance: "{{ android_importance_var }}"
+                      notification_icon: "{{ notification_icon_mdi_var }}"
+                      clickAction: "{{ intent_uri }}"
+                      actions: "{{ actions_list }}"
     default: []
