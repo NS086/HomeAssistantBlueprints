@@ -73,7 +73,9 @@ Fill the inputs:
 
 ## Reolink deep-link (Android): how to fill it
 
-Thanks to @reinaldoarrosi, the Reolink app can be opened to a specific camera with this intent:
+Thanks to @reinaldoarrosi, the Reolink app can be opened to a specific camera with this intent. 
+
+** Please note the Blueprint now does the bitmask calculation for you, so you can just enter the channel number **
 
 ```
 intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;
