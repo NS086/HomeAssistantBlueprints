@@ -1,10 +1,8 @@
 blueprint:
-  name: Reolink Camera Alert with Snapshot, Actions & Snooze
+  name: Reolink Camera Alert with Snapshot, Actions, Snooze & Cooldown
   description: >
-    Snapshot notification with optional buttons (Open URL / Open Reolink) and a 6h
-    Snooze. Uses a single rolling snapshot file to avoid buildup. Requires a
-    Person sensor; optional extra sensors (e.g., doorbell "visitor/pressed").
-    Lets you select one or more mobile devices to notify. Title is empty by default;
+    Snapshot notification with optional buttons (Open URL / Open Reolink), a 6h Snooze,
+    and a user-configurable Cooldown to prevent notification spam. Title is empty by default;
     message defaults to “Person detected at <Camera>”. NVR channel math is automatic (enter 1–32).
   domain: automation
   input:
@@ -124,6 +122,24 @@ blueprint:
       default: "mdi:bell-sleep-outline"
       selector: { icon: {} }
 
+    # --- Cooldown (new) ---
+    cooldown_enabled:
+      name: Enable cooldown (anti-spam)
+      default: true
+      selector: { boolean: {} }
+
+    cooldown_timer:
+      name: Cooldown timer helper
+      description: Prevents repeated alerts while this timer is active. Use a separate timer per camera, or the same timer for a global cooldown.
+      selector:
+        entity: { domain: timer }
+
+    cooldown_duration:
+      name: Cooldown duration
+      description: Time to suppress repeats after sending one alert (e.g., 00:02:00).
+      default: "00:02:00"
+      selector: { text: {} }
+
     # Android channel settings
     android_channel:
       name: Android notification channel name
@@ -194,6 +210,10 @@ variables:
   enable_open_url_button_var: !input enable_open_url_button
   open_url_text: !input open_url
 
+  cooldown_enabled_var: !input cooldown_enabled
+  cooldown_timer_entity: !input cooldown_timer
+  cooldown_duration_text: !input cooldown_duration
+
   # Computed
   cam_name: "{{ state_attr(camera_entity, 'friendly_name') or camera_entity }}"
   snap_rel: "{{ '/media/local/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
@@ -239,9 +259,15 @@ actions:
           - condition: template
             value_template: "{{ trigger.platform in ['state','template'] }}"
         sequence:
+          # Suppression: Snooze must be idle
           - condition: template
             value_template: "{{ is_state(snooze_timer_entity, 'idle') }}"
+          # Suppression: Cooldown must be idle (if enabled)
+          - condition: template
+            value_template: >-
+              {{ (not cooldown_enabled_var) or is_state(cooldown_timer_entity, 'idle') }}
 
+          # Snapshot to a single rolling file
           - service: camera.snapshot
             data:
               entity_id: !input camera
@@ -266,21 +292,8 @@ actions:
               # Single-line Reolink intent (for tap + button)
               intent_uri: >-
                 intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ channel_mask }};S.ALMNAME=Detection;S.ALMTIME={{ now().isoformat() }};end
-              # Build actions as a proper list (no nulls)
-              actions_list: >-
-                {% set items = [] %}
-                {% if enable_open_url_button_var and (open_url_text | trim) != '' %}
-                  {% set items = items + [ {'action':'URI','title':'Open URL','uri': open_url_text} ] %}
-                {% endif %}
-                {% if enable_reolink_button_var %}
-                  {% set items = items + [ {'action':'URI','title':'Open Reolink','uri': intent_uri} ] %}
-                {% endif %}
-                {% if show_snooze_button_var %}
-                  {% set label = (snooze_label_text | trim) if (snooze_label_text | trim) != '' else 'Snooze' %}
-                  {% set items = items + [ {'action':'SNOOZE_6H','title': label,'icon': snooze_icon_mdi_var} ] %}
-                {% endif %}
-                {{ items }}
 
+          # Send to each selected device
           - repeat:
               for_each: "{{ notify_ids_list }}"
               sequence:
@@ -294,5 +307,32 @@ actions:
                       importance: "{{ android_importance_var }}"
                       notification_icon: "{{ notification_icon_mdi_var }}"
                       clickAction: "{{ intent_uri }}"
-                      actions: "{{ actions_list }}"
+                      # Build actions inline to avoid nulls
+                      actions:
+                        {% if enable_open_url_button_var and (open_url_text | trim) != '' %}
+                        - action: URI
+                          title: Open URL
+                          uri: "{{ open_url_text }}"
+                        {% endif %}
+                        {% if enable_reolink_button_var %}
+                        - action: URI
+                          title: Open Reolink
+                          uri: "{{ intent_uri }}"
+                        {% endif %}
+                        {% if show_snooze_button_var %}
+                        - action: SNOOZE_6H
+                          title: "{{ (snooze_label_text | trim) if (snooze_label_text | trim) != '' else 'Snooze' }}"
+                          icon: "{{ snooze_icon_mdi_var }}"
+                        {% endif %}
+
+          # Start cooldown after sending (if enabled)
+          - if:
+              - condition: template
+                value_template: "{{ cooldown_enabled_var }}"
+            then:
+              - service: timer.start
+                target:
+                  entity_id: "{{ cooldown_timer_entity }}"
+                data:
+                  duration: "{{ cooldown_duration_text }}"
     default: []
