@@ -1,20 +1,21 @@
 blueprint:
-  name: Reolink Camera Alert (Android) — Snapshot, Actions, Silence, Filters
+  name: Reolink Camera Alert (Android • Snapshot • Per-Camera Silence)
   description: >
-    Android snapshot notifications with optional "Open URL" (custom label), default tap to Reolink,
-    and silence buttons (this camera / all selected). Presence & time filters plus a cooldown.
-    Uses one rolling snapshot file. Title defaults to empty; message defaults to "Person detected at <Camera>".
+    Android-only snapshot alert with Open Reolink deep-link, optional Open URL button,
+    and a per-camera “Silence X min” action that disables only THIS automation then
+    re-enables it after the timer. Includes presence + time filters and a simple cooldown.
   domain: automation
 
   input:
     person_sensor:
       name: Person sensor (binary_sensor)
       selector:
-        entity: { domain: binary_sensor }
+        entity:
+          domain: binary_sensor
 
     extra_sensors:
       name: Additional event sensors (optional)
-      description: Add doorbell visitor/pressed etc. Leave empty if not used.
+      description: Add doorbell visitor/pressed here.
       default: []
       selector:
         entity:
@@ -24,111 +25,123 @@ blueprint:
     camera:
       name: Camera entity
       selector:
-        entity: { domain: camera }
+        entity:
+          domain: camera
 
     notify_devices:
-      name: Phones to notify (Android)
+      name: Android phones to notify
+      description: Pick one or more devices from the mobile_app integration.
       selector:
         device:
           integration: mobile_app
           multiple: true
 
+    # Texts
     custom_title:
       name: Custom notification title (optional)
+      description: Leave blank for no title.
       default: ""
-      selector: { text: {} }
+      selector:
+        text: {}
 
     custom_message:
       name: Custom notification text (optional)
       description: >
-        Placeholders: {camera_name}, {event}. Leave blank to use:
-        "Person detected at {camera_name}".
+        Use placeholders: {camera_name}, {event}. Blank -> "Person detected at {camera_name}".
       default: ""
-      selector: { text: {} }
+      selector:
+        text: {}
 
     filename_stem:
       name: Snapshot filename stem (no extension)
       default: "camera"
-      selector: { text: {} }
+      selector:
+        text: {}
 
     notification_icon_mdi:
       name: Notification icon (mdi)
-      description: MDI icon like "mdi:cctv".
+      description: e.g. mdi:cctv
       default: "mdi:cctv"
-      selector: { icon: {} }
+      selector:
+        icon: {}
 
-    # Reolink deep-link params (Android)
+    # Reolink deep-link
     reolink_uid:
       name: Reolink UID
-      selector: { text: {} }
+      selector:
+        text: {}
 
     reolink_devname:
       name: Reolink device name
       default: "NVR"
-      selector: { text: {} }
+      selector:
+        text: {}
 
     nvr_channel_index:
       name: NVR channel number (1–32)
       default: 1
       selector:
-        number: { min: 1, max: 32, step: 1, mode: box }
+        number:
+          min: 1
+          max: 32
+          step: 1
+          mode: box
 
-    # Optional URL button
+    # Optional URL action
     enable_open_url_button:
       name: Show "Open URL" button
       default: false
-      selector: { boolean: {} }
+      selector:
+        boolean: {}
 
     open_url:
       name: URL to open
       default: ""
-      selector: { text: {} }
+      selector:
+        text: {}
 
     open_url_title:
-      name: '"Open URL" button label'
+      name: Open URL button label
       default: "Open URL"
-      selector: { text: {} }
+      selector:
+        text: {}
 
-    # Silence buttons
-    show_silence_this_button:
+    # Silence (disable automation) action
+    show_silence_button:
       name: Show "Silence this camera" button
       default: true
-      selector: { boolean: {} }
-
-    show_silence_all_button:
-      name: Show "Silence all selected automations" button
-      default: false
-      selector: { boolean: {} }
-
-    automations_to_silence:
-      name: Automations to include in "Silence all"
-      default: []
       selector:
-        entity:
-          domain: automation
-          multiple: true
+        boolean: {}
 
     silence_minutes:
       name: Silence duration (minutes)
       default: 30
       selector:
-        number: { min: 1, max: 360, mode: box }
+        number:
+          min: 1
+          max: 360
+          mode: box
 
     # Filters
     presence_filter_enabled:
       name: Enable presence filter
+      description: Only notify when nobody selected is home.
       default: false
-      selector: { boolean: {} }
+      selector:
+        boolean: {}
 
     presence_entities:
       name: Presence entities (people/device trackers/groups)
-      description: Only notify if ALL of these are NOT home (when enabled).
+      description: Only notify if ALL of these are NOT home (when enabled above).
       default: []
       selector:
         entity:
           multiple: true
           filter:
-            domain: [device_tracker, person, group]
+            domain:
+              - device_tracker
+              - person
+              - group
 
     disable_hours:
       name: Quiet hours (0–23, optional)
@@ -168,13 +181,17 @@ blueprint:
       description: Minimum time between alerts from this automation.
       default: 0
       selector:
-        number: { min: 0, max: 86400, mode: box }
+        number:
+          min: 0
+          max: 86400
+          mode: box
 
     # Android channel
     android_channel:
       name: Android notification channel name
       default: "Security"
-      selector: { text: {} }
+      selector:
+        text: {}
 
     android_importance:
       name: Android channel importance
@@ -187,45 +204,37 @@ blueprint:
       name: Max queued runs
       default: 10
       selector:
-        number: { min: 1, max: 50, step: 1, mode: slider }
+        number:
+          min: 1
+          max: 50
+          step: 1
+          mode: slider
 
 mode: queued
 max: !input queue_max
 
-trigger_variables:
-  extra_sensors_list: !input extra_sensors
-
-trigger:
+triggers:
   - id: person
     platform: state
     entity_id: !input person_sensor
     to: "on"
 
-  - id: visitor
-    platform: template
-    value_template: >-
-      {% set ents = expand(extra_sensors_list) %}
-      {% if ents | length == 0 %}
-        false
-      {% else %}
-        {{ (ents | selectattr('state','eq','on') | list | length) > 0 }}
-      {% endif %}
+  - id: extra
+    platform: state
+    entity_id: !input extra_sensors
+    to: "on"
 
-  # Android action buttons
-  - id: silence_this
+  # Per-automation unique silence action
+  - id: silence
     platform: event
     event_type: mobile_app_notification_action
     event_data:
-      action: SILENCE_THIS
+      action: "SILENCE_{{ this.entity_id }}"
 
-  - id: silence_all
-    platform: event
-    event_type: mobile_app_notification_action
-    event_data:
-      action: SILENCE_ALL
-
+# Variables
 variables:
   filename_stem_var: !input filename_stem
+
   reolink_uid: !input reolink_uid
   reolink_devname: !input reolink_devname
   nvr_channel_index_var: !input nvr_channel_index
@@ -248,9 +257,7 @@ variables:
   open_url_text: !input open_url
   open_url_title_text: !input open_url_title
 
-  show_silence_this_button_var: !input show_silence_this_button
-  show_silence_all_button_var: !input show_silence_all_button
-  automations_to_silence_list: !input automations_to_silence
+  show_silence_button_var: !input show_silence_button
   silence_minutes_var: !input silence_minutes
 
   presence_filter_enabled_var: !input presence_filter_enabled
@@ -258,96 +265,66 @@ variables:
 
   disable_hours_raw: !input disable_hours
   disable_hours_list: "{{ (disable_hours_raw | map('int') | list) if disable_hours_raw is iterable else [] }}"
+
   cooldown_seconds_var: !input cooldown_seconds
 
   snap_rel: "{{ '/media/local/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
   snap_abs: "{{ '/media/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
   bust: "{{ (now() | as_timestamp) | int }}"
+
+  # Channel bitmask from 1..32
   channel_mask: "{{ (2 ** (nvr_channel_index_var | int - 1)) | int }}"
 
-condition: []
+conditions: []
 
-action:
+actions:
   - choose:
-      # --- Silence THIS automation ---
+      # ---- Silence button pressed (unique per automation) ----
       - conditions:
           - condition: trigger
-            id: silence_this
+            id: silence
         sequence:
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ notify_ids_list | length > 0 }}"
-                sequence:
-                  - repeat:
-                      for_each: "{{ notify_ids_list }}"
-                      sequence:
-                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
-                          data:
-                            title: ""
-                            message: "{{ 'Notifications silenced for ' ~ silence_minutes_var ~ ' min' }}"
-                            data:
-                              channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
-                              notification_icon: "{{ notification_icon_mdi_var }}"
-            default: []
+          # Turn off only THIS automation
           - action: automation.turn_off
             target:
               entity_id: "{{ this.entity_id }}"
             data:
               stop_actions: false
+
+          # Acknowledge to the pressing device (if device_id present)
+          - choose:
+              - conditions: "{{ trigger.event.data is defined and trigger.event.data.device_id is defined }}"
+                sequence:
+                  - service: "{{ 'notify.mobile_app_' ~ (device_attr(trigger.event.data.device_id, 'name') | slugify) }}"
+                    data:
+                      title: ""
+                      message: "Notifications silenced for {{ silence_minutes_var }} min"
+                      data:
+                        ttl: 0
+                        channel: "{{ android_channel_var }}"
+                        importance: "{{ android_importance_var }}"
+                        notification_icon: "{{ notification_icon_mdi_var }}"
+
+          # Wait, then re-enable only THIS automation
           - delay:
               minutes: !input silence_minutes
           - action: automation.turn_on
             target:
               entity_id: "{{ this.entity_id }}"
 
-      # --- Silence ALL selected automations ---
-      - conditions:
-          - condition: trigger
-            id: silence_all
-        sequence:
-          - variables:
-              all_to_toggle: >-
-                {{ ([this.entity_id] + (automations_to_silence_list if automations_to_silence_list is iterable else [])) | unique | list }}
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ notify_ids_list | length > 0 }}"
-                sequence:
-                  - repeat:
-                      for_each: "{{ notify_ids_list }}"
-                      sequence:
-                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
-                          data:
-                            title: ""
-                            message: "{{ 'Selected automations silenced for ' ~ silence_minutes_var ~ ' min' }}"
-                            data:
-                              channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
-                              notification_icon: "{{ notification_icon_mdi_var }}"
-            default: []
-          - action: automation.turn_off
-            target:
-              entity_id: "{{ all_to_toggle }}"
-            data:
-              stop_actions: false
-          - delay:
-              minutes: !input silence_minutes
-          - action: automation.turn_on
-            target:
-              entity_id: "{{ all_to_toggle }}"
-
-      # --- Main path: person/visitor fired ---
+      # ---- Main path: person or extra sensor fired ----
       - conditions:
           - condition: template
-            value_template: "{{ trigger.platform in ['state','template'] }}"
+            value_template: "{{ trigger.id in ['person','extra'] }}"
         sequence:
+          # Suppress if in cooldown
           - condition: template
             value_template: >-
               {{ cooldown_seconds_var == 0
                  or not this.attributes.last_triggered
                  or (now() - this.attributes.last_triggered).total_seconds() > cooldown_seconds_var }}
+
+          # Presence filter (if enabled)
           - condition: template
             value_template: >-
               {% if not presence_filter_enabled_var %}
@@ -357,18 +334,23 @@ action:
                     | selectattr('state','eq','home')
                     | list | length) == 0 }}
               {% endif %}
+
+          # Quiet hours filter
           - condition: template
             value_template: >-
               {{ (disable_hours_list | length == 0)
                  or (now().hour not in disable_hours_list) }}
+
+          # Snapshot to single rolling file
           - action: camera.snapshot
             data:
               entity_id: !input camera
               filename: "{{ snap_abs }}"
           - delay: "00:00:01"
+
           - variables:
               almtype: "{{ 'PEOPLE' if trigger.id == 'person' else 'VISITOR' }}"
-              title_final: "{{ custom_title_text | trim }}"
+              title_final: "{{ (custom_title_text | trim) }}"
               event_text: "{{ 'Person detected' if trigger.id == 'person' else 'Doorbell pressed' }}"
               msg_default: "{{ 'Person detected at ' ~ cam_name }}"
               msg_final: >-
@@ -382,31 +364,101 @@ action:
                 {% endif %}
               intent_uri: >-
                 intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ channel_mask }};S.ALMNAME=Detection;S.ALMTIME={{ now().isoformat() }};end
-              actions_list: >-
-                {% set items = [] %}
-                {% if enable_open_url_button_var and (open_url_text | trim) != '' %}
-                  {% set items = items + [ {'action':'URI','title': open_url_title_text,'uri': open_url_text} ] %}
-                {% endif %}
-                {% set items = items + [ {'action':'URI','title':'Open Reolink','uri': intent_uri} ] %}
-                {% if show_silence_this_button_var %}
-                  {% set items = items + [ {'action':'SILENCE_THIS','title':'Silence ' ~ silence_minutes_var ~ 'm'} ] %}
-                {% endif %}
-                {% if show_silence_all_button_var and (automations_to_silence_list | length > 0) %}
-                  {% set items = items + [ {'action':'SILENCE_ALL','title':'Silence ALL ' ~ silence_minutes_var ~ 'm'} ] %}
-                {% endif %}
-                {{ items }}
+
+          # Send to each selected device using templated notify service names
           - repeat:
               for_each: "{{ notify_ids_list }}"
               sequence:
-                - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
-                  data:
-                    title: "{{ title_final }}"
-                    message: "{{ msg_final }}"
-                    data:
-                      image: "{{ snap_rel }}?v={{ bust }}"
-                      channel: "{{ android_channel_var }}"
-                      importance: "{{ android_importance_var }}"
-                      notification_icon: "{{ notification_icon_mdi_var }}"
-                      clickAction: "{{ intent_uri }}"
-                      actions: "{{ actions_list }}"
+                - choose:
+                    # URL ON + Silence ON
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ enable_open_url_button_var and (open_url_text | trim) != '' and show_silence_button_var }}"
+                      sequence:
+                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              ttl: 0
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
+                              clickAction: "{{ intent_uri }}"
+                              actions:
+                                - action: URI
+                                  title: "{{ open_url_title_text }}"
+                                  uri: "{{ open_url_text }}"
+                                - action: URI
+                                  title: "Open Reolink"
+                                  uri: "{{ intent_uri }}"
+                                - action: "SILENCE_{{ this.entity_id }}"
+                                  title: "Silence {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-sleep-outline
+
+                    # URL ON + Silence OFF
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ enable_open_url_button_var and (open_url_text | trim) != '' and not show_silence_button_var }}"
+                      sequence:
+                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              ttl: 0
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
+                              clickAction: "{{ intent_uri }}"
+                              actions:
+                                - action: URI
+                                  title: "{{ open_url_title_text }}"
+                                  uri: "{{ open_url_text }}"
+                                - action: URI
+                                  title: "Open Reolink"
+                                  uri: "{{ intent_uri }}"
+
+                    # URL OFF + Silence ON
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ (not enable_open_url_button_var or (open_url_text | trim) == '') and show_silence_button_var }}"
+                      sequence:
+                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              ttl: 0
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
+                              clickAction: "{{ intent_uri }}"
+                              actions:
+                                - action: URI
+                                  title: "Open Reolink"
+                                  uri: "{{ intent_uri }}"
+                                - action: "SILENCE_{{ this.entity_id }}"
+                                  title: "Silence {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-sleep-outline
+
+                    # URL OFF + Silence OFF
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ (not enable_open_url_button_var or (open_url_text | trim) == '') and not show_silence_button_var }}"
+                      sequence:
+                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              ttl: 0
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
+                              clickAction: "{{ intent_uri }}"
     default: []
