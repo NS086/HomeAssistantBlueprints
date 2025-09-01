@@ -2,8 +2,8 @@ blueprint:
   name: Reolink Camera Alert (Android) — Snapshot, Actions, Silence, Filters
   description: >
     Android snapshot notifications with optional "Open URL" (custom label), default tap to Reolink,
-    and silence buttons. Presence & time filters plus a simple cooldown. Uses one rolling snapshot file.
-    Title defaults to empty; message defaults to "Person detected at <Camera>".
+    and silence buttons (this camera / all selected). Presence & time filters plus a cooldown.
+    Uses one rolling snapshot file. Title defaults to empty; message defaults to "Person detected at <Camera>".
   domain: automation
 
   input:
@@ -37,7 +37,6 @@ blueprint:
     # --- Texts & look ---
     custom_title:
       name: Custom notification title (optional)
-      description: Leave blank to keep the title empty (default).
       default: ""
       selector: { text: {} }
 
@@ -105,7 +104,6 @@ blueprint:
 
     automations_to_silence:
       name: Automations to include in "Silence all"
-      description: Select any other Reolink (or related) automations you want silenced with the "all" button.
       default: []
       selector:
         entity:
@@ -126,16 +124,13 @@ blueprint:
 
     presence_entities:
       name: Presence entities (people/device trackers/groups)
-      description: Only notify if ALL of these are NOT home (when presence filter is enabled).
+      description: Only notify if ALL of these are NOT home (when enabled).
       default: []
       selector:
         entity:
           multiple: true
           filter:
-            domain:
-              - device_tracker
-              - person
-              - group
+            domain: [device_tracker, person, group]
 
     disable_hours:
       name: Quiet hours (0–23, optional)
@@ -179,14 +174,16 @@ blueprint:
 mode: queued
 max: !input queue_max
 
-# --- Triggers ---
-triggers:
+# Make inputs available to template triggers
+trigger_variables:
+  extra_sensors_list: !input extra_sensors
+
+trigger:
   - id: person
     platform: state
     entity_id: !input person_sensor
     to: "on"
 
-  # Extra sensors ON → visitor
   - id: visitor
     platform: template
     value_template: >-
@@ -210,7 +207,6 @@ triggers:
     event_data:
       action: SILENCE_ALL
 
-# --- Variables ---
 variables:
   # Inputs
   filename_stem_var: !input filename_stem
@@ -241,7 +237,6 @@ variables:
   disable_hours_raw: !input disable_hours
   disable_hours_list: "{{ (disable_hours_raw | map('int') | list) if disable_hours_raw is iterable else [] }}"
   cooldown_seconds_var: !input cooldown_seconds
-  extra_sensors_list: !input extra_sensors
 
   # Computed helpers
   notify_ids_list: >-
@@ -250,13 +245,12 @@ variables:
   snap_rel: "{{ '/media/local/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
   snap_abs: "{{ '/media/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
   bust: "{{ (now() | as_timestamp) | int }}"
-  # Reolink alarm channel bitmask from 1..32 (Reolink expects a mask)
+  # Reolink alarm channel bitmask from 1..32
   channel_mask: "{{ (2 ** (nvr_channel_index_var | int - 1)) | int }}"
 
-conditions: []
+condition: []
 
-# --- Actions ---
-actions:
+action:
   - choose:
       # =======================
       # SILENCE THIS automation
@@ -265,39 +259,23 @@ actions:
           - condition: trigger
             id: silence_this
         sequence:
-          # Build a safe ack target; skip ack if we can't resolve a service
-          - variables:
-              ack_target_name: >-
-                {% set name = '' %}
-                {% if trigger is defined and trigger.event is defined and trigger.event.data is defined %}
-                  {% if trigger.event.data.device_id is defined %}
-                    {% set name = device_attr(trigger.event.data.device_id, 'name') %}
-                  {% endif %}
-                {% endif %}
-                {% if not name %}
-                  {% set first = (notify_ids_list | first) %}
-                  {% if first %}
-                    {% set name = device_attr(first, 'name') %}
-                  {% endif %}
-                {% endif %}
-                {{ name or '' }}
-              ack_service: >-
-                {% set n = (ack_target_name | string) %}
-                {{ 'notify.mobile_app_' ~ (n | slugify) if n|length > 0 else '' }}
-
+          # Friendly ack to all selected phones (safe; skips if none selected)
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ ack_service | length > 0 }}"
+                    value_template: "{{ notify_ids_list | length > 0 }}"
                 sequence:
-                  - service: "{{ ack_service }}"
-                    data:
-                      title: ""
-                      message: "{{ 'Notifications silenced for ' ~ silence_minutes_var ~ ' min' }}"
-                      data:
-                        channel: "{{ android_channel_var }}"
-                        importance: "{{ android_importance_var }}"
-                        notification_icon: "{{ notification_icon_mdi_var }}"
+                  - repeat:
+                      for_each: "{{ notify_ids_list }}"
+                      sequence:
+                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
+                          data:
+                            title: ""
+                            message: "{{ 'Notifications silenced for ' ~ silence_minutes_var ~ ' min' }}"
+                            data:
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
             default: []
 
           # Disable only this automation, then re-enable after the delay
@@ -321,41 +299,27 @@ actions:
           - condition: trigger
             id: silence_all
         sequence:
-          # Ack safely (optional)
           - variables:
-              ack_target_name: >-
-                {% set name = '' %}
-                {% if trigger is defined and trigger.event is defined and trigger.event.data is defined %}
-                  {% if trigger.event.data.device_id is defined %}
-                    {% set name = device_attr(trigger.event.data.device_id, 'name') %}
-                  {% endif %}
-                {% endif %}
-                {% if not name %}
-                  {% set first = (notify_ids_list | first) %}
-                  {% if first %}
-                    {% set name = device_attr(first, 'name') %}
-                  {% endif %}
-                {% endif %}
-                {{ name or '' }}
-              ack_service: >-
-                {% set n = (ack_target_name | string) %}
-                {{ 'notify.mobile_app_' ~ (n | slugify) if n|length > 0 else '' }}
               all_to_toggle: >-
                 {{ ([this.entity_id] + (automations_to_silence_list if automations_to_silence_list is iterable else [])) | unique | list }}
 
+          # Ack to all selected phones (optional)
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ ack_service | length > 0 }}"
+                    value_template: "{{ notify_ids_list | length > 0 }}"
                 sequence:
-                  - service: "{{ ack_service }}"
-                    data:
-                      title: ""
-                      message: "{{ 'Selected automations silenced for ' ~ silence_minutes_var ~ ' min' }}"
-                      data:
-                        channel: "{{ android_channel_var }}"
-                        importance: "{{ android_importance_var }}"
-                        notification_icon: "{{ notification_icon_mdi_var }}"
+                  - repeat:
+                      for_each: "{{ notify_ids_list }}"
+                      sequence:
+                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
+                          data:
+                            title: ""
+                            message: "{{ 'Selected automations silenced for ' ~ silence_minutes_var ~ ' min' }}"
+                            data:
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
             default: []
 
           - action: automation.turn_off
@@ -427,7 +391,6 @@ actions:
               intent_uri: >-
                 intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ channel_mask }};S.ALMNAME=Detection;S.ALMTIME={{ now().isoformat() }};end
 
-              # Build Android actions list
               actions_list: >-
                 {% set items = [] %}
                 {% if enable_open_url_button_var and (open_url_text | trim) != '' %}
