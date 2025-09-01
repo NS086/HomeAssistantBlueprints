@@ -85,7 +85,7 @@ blueprint:
       selector: { text: {} }
 
     open_url_title:
-      name: "Open URL" button label
+      name: '"Open URL" button label'
       default: "Open URL"
       selector: { text: {} }
 
