@@ -1,10 +1,10 @@
 blueprint:
-  name: Reolink Camera Alert (Snapshot, Actions, Silence, Filters)
+  name: Reolink Camera Alert (Snapshot, Actions, Snooze per-camera or All)
   description: >
-    Sends a snapshot notification with optional buttons (Open URL / Open Reolink) and a
-    "Silence this camera" button that disables this automation for N minutes. Includes optional
-    presence & time filters and a simple cooldown. Uses a single rolling snapshot file.
-    Title is empty by default; message defaults to “Person detected at <Camera>”.
+    Snapshot notification with optional buttons (Open URL / Open Reolink) and Snooze.
+    Per-camera Snooze uses a unique action so only this automation reacts. Optional Snooze All
+    uses a shared global timer. Uses a single rolling snapshot file. Title empty by default;
+    message defaults to “Person detected at <Camera>”. Includes simple cooldown & optional filters.
   domain: automation
 
   input:
@@ -44,8 +44,7 @@ blueprint:
     custom_message:
       name: Custom notification text (optional)
       description: >
-        Use placeholders: {camera_name}, {event}. Leave blank to use:
-        "Person detected at {camera_name}".
+        Placeholders: {camera_name}, {event}. Leave blank for "Person detected at {camera_name}".
       default: ""
       selector: { text: {} }
 
@@ -92,17 +91,44 @@ blueprint:
       default: "Open URL"
       selector: { text: {} }
 
-    # Silence (disable automation) action
+    # --- Snooze settings ---
     show_silence_button:
-      name: Show "Silence this camera" button
+      name: Show "Snooze (this camera)" button
       default: true
       selector: { boolean: {} }
 
-    silence_minutes:
-      name: Silence duration (minutes)
+    snooze_minutes:
+      name: Snooze duration (minutes)
       default: 30
       selector:
         number: { min: 1, max: 360, mode: box }
+
+    use_timer_snooze:
+      name: Use timer-based snooze (recommended)
+      description: If ON and a timer is selected below, Snooze will start the timer instead of disabling the automation.
+      default: true
+      selector: { boolean: {} }
+
+    camera_snooze_timer:
+      name: Camera snooze timer (optional)
+      description: Timer helper for this camera. Alerts suppressed while it runs.
+      default: ""
+      selector:
+        entity:
+          domain: timer
+
+    enable_snooze_all:
+      name: Show "Snooze all" button
+      default: false
+      selector: { boolean: {} }
+
+    global_snooze_timer:
+      name: Global snooze timer (optional)
+      description: Use the same timer across all camera automations to snooze everything together.
+      default: ""
+      selector:
+        entity:
+          domain: timer
 
     # Filters
     presence_filter_enabled:
@@ -185,6 +211,11 @@ blueprint:
 mode: queued
 max: !input queue_max
 
+# Unique action IDs per automation (so only THIS one snoozes)
+trigger_variables:
+  snooze_action: "SNOOZE_{{ this.entity_id }}"
+  snooze_all_action: "SNOOZE_ALL_REOLINK"
+
 triggers:
   - id: person
     platform: state
@@ -195,18 +226,22 @@ triggers:
     platform: template
     value_template: >-
       {% set ents = expand(extra_sensors_list) %}
-      {% if ents | length == 0 %}
-        false
-      {% else %}
-        {{ (ents | selectattr('state','eq','on') | list | length) > 0 }}
+      {% if ents | length == 0 %} false
+      {% else %} {{ (ents | selectattr('state','eq','on') | list | length) > 0 }}
       {% endif %}
 
-  # Silence button (mobile app action)
-  - id: silence
+  # Snooze buttons (per-camera & global)
+  - id: snooze
     platform: event
     event_type: mobile_app_notification_action
     event_data:
-      action: SILENCE_THIS
+      action: "{{ snooze_action }}"
+
+  - id: snooze_all
+    platform: event
+    event_type: mobile_app_notification_action
+    event_data:
+      action: "{{ snooze_all_action }}"
 
 # Variables
 variables:
@@ -235,7 +270,13 @@ variables:
   open_url_title_text: !input open_url_title
 
   show_silence_button_var: !input show_silence_button
-  silence_minutes_var: !input silence_minutes
+  snooze_minutes_var: !input snooze_minutes
+
+  use_timer_snooze_var: !input use_timer_snooze
+  camera_timer_entity: !input camera_snooze_timer
+
+  enable_snooze_all_var: !input enable_snooze_all
+  global_timer_entity: !input global_snooze_timer
 
   presence_filter_enabled_var: !input presence_filter_enabled
   presence_entities_list: !input presence_entities
@@ -244,7 +285,6 @@ variables:
   disable_hours_list: "{{ (disable_hours_raw | map('int') | list) if disable_hours_raw is iterable else [] }}"
 
   cooldown_seconds_var: !input cooldown_seconds
-
   extra_sensors_list: !input extra_sensors
 
   snap_rel: "{{ '/media/local/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
@@ -254,41 +294,123 @@ variables:
   # Channel bitmask from 1..32
   channel_mask: "{{ (2 ** (nvr_channel_index_var | int - 1)) | int }}"
 
+  # Make action IDs available for building buttons
+  snooze_action_var: "{{ snooze_action }}"
+  snooze_all_action_var: "{{ snooze_all_action }}"
+
 conditions: []
 
 actions:
   - choose:
-      # ---- Silence button pressed ----
+      # ---- Snooze (this camera) pressed ----
       - conditions:
           - condition: trigger
-            id: silence
+            id: snooze
         sequence:
-          - action: automation.turn_off
-            target:
-              entity_id: "{{ this.entity_id }}"
-            data:
-              stop_actions: false
-          # Acknowledge to the pressing device (safe: service templated from device name)
-          - service: "{{ 'notify.mobile_app_' ~ (device_attr(trigger.event.data.device_id, 'name') | slugify) }}"
-            data:
-              title: ""
-              message: "{{ 'Notifications silenced for ' ~ silence_minutes_var ~ ' min' }}"
-              data:
-                channel: "{{ android_channel_var }}"
-                importance: "{{ android_importance_var }}"
-                notification_icon: "{{ notification_icon_mdi_var }}"
-          - delay:
-              minutes: !input silence_minutes
-          - action: automation.turn_on
-            target:
-              entity_id: "{{ this.entity_id }}"
+          # Preferred: start camera timer if enabled/available
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >-
+                      {{ use_timer_snooze_var and (camera_timer_entity | string) not in ['', 'None', 'none'] }}
+                sequence:
+                  - service: timer.start
+                    target:
+                      entity_id: "{{ camera_timer_entity }}"
+                    data:
+                      duration: "{{ (snooze_minutes_var | int) * 60 }}"
+                  - service: "{{ 'notify.mobile_app_' ~ (device_attr(trigger.event.data.device_id, 'name') | slugify) }}"
+                    data:
+                      title: ""
+                      message: "{{ 'Snoozed this camera for ' ~ snooze_minutes_var ~ ' min' }}"
+                      data:
+                        channel: "{{ android_channel_var }}"
+                        importance: "{{ android_importance_var }}"
+                        notification_icon: "{{ notification_icon_mdi_var }}"
+            default:
+              # Fallback: temporarily disable only THIS automation
+              - action: automation.turn_off
+                target:
+                  entity_id: "{{ this.entity_id }}"
+                data:
+                  stop_actions: false
+              - service: "{{ 'notify.mobile_app_' ~ (device_attr(trigger.event.data.device_id, 'name') | slugify) }}"
+                data:
+                  title: ""
+                  message: "{{ 'Paused this camera for ' ~ snooze_minutes_var ~ ' min' }}"
+                  data:
+                    channel: "{{ android_channel_var }}"
+                    importance: "{{ android_importance_var }}"
+                    notification_icon: "{{ notification_icon_mdi_var }}"
+              - delay:
+                  minutes: !input snooze_minutes
+              - action: automation.turn_on
+                target:
+                  entity_id: "{{ this.entity_id }}"
+
+      # ---- Snooze ALL pressed ----
+      - conditions:
+          - condition: trigger
+            id: snooze_all
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >-
+                      {{ enable_snooze_all_var and (global_timer_entity | string) not in ['', 'None', 'none'] }}
+                sequence:
+                  - service: timer.start
+                    target:
+                      entity_id: "{{ global_timer_entity }}"
+                    data:
+                      duration: "{{ (snooze_minutes_var | int) * 60 }}"
+                  - service: "{{ 'notify.mobile_app_' ~ (device_attr(trigger.event.data.device_id, 'name') | slugify) }}"
+                    data:
+                      title: ""
+                      message: "{{ 'Snoozed ALL cameras for ' ~ snooze_minutes_var ~ ' min' }}"
+                      data:
+                        channel: "{{ android_channel_var }}"
+                        importance: "{{ android_importance_var }}"
+                        notification_icon: "{{ notification_icon_mdi_var }}"
+            default:
+              # No global timer configured; fall back to per-camera behavior for this automation only
+              - service: "{{ 'notify.mobile_app_' ~ (device_attr(trigger.event.data.device_id, 'name') | slugify) }}"
+                data:
+                  title: ""
+                  message: "No global timer set. Snoozing this camera only."
+                  data:
+                    channel: "{{ android_channel_var }}"
+                    importance: "{{ android_importance_var }}"
+                    notification_icon: "{{ notification_icon_mdi_var }}"
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: >-
+                          {{ use_timer_snooze_var and (camera_timer_entity | string) not in ['', 'None', 'none'] }}
+                    sequence:
+                      - service: timer.start
+                        target:
+                          entity_id: "{{ camera_timer_entity }}"
+                        data:
+                          duration: "{{ (snooze_minutes_var | int) * 60 }}"
+                default:
+                  - action: automation.turn_off
+                    target:
+                      entity_id: "{{ this.entity_id }}"
+                    data:
+                      stop_actions: false
+                  - delay:
+                      minutes: !input snooze_minutes
+                  - action: automation.turn_on
+                    target:
+                      entity_id: "{{ this.entity_id }}"
 
       # ---- Main path: person or extra sensor fired ----
       - conditions:
           - condition: template
             value_template: "{{ trigger.platform in ['state','template'] }}"
         sequence:
-          # Suppress if in cooldown
+          # Cooldown
           - condition: template
             value_template: >-
               {{ cooldown_seconds_var == 0
@@ -298,19 +420,26 @@ actions:
           # Presence filter (if enabled)
           - condition: template
             value_template: >-
-              {% if not presence_filter_enabled_var %}
-                true
+              {% if not presence_filter_enabled_var %} true
               {% else %}
-                {{ (expand(presence_entities_list)
-                    | selectattr('state','eq','home')
-                    | list | length) == 0 }}
+                {{ (expand(presence_entities_list) | selectattr('state','eq','home') | list | length) == 0 }}
               {% endif %}
 
-          # Quiet hours filter
+          # Quiet hours
           - condition: template
             value_template: >-
-              {{ (disable_hours_list | length == 0)
-                 or (now().hour not in disable_hours_list) }}
+              {{ (disable_hours_list | length == 0) or (now().hour not in disable_hours_list) }}
+
+          # Snooze gating: camera timer + global timer must be idle (if provided)
+          - condition: template
+            value_template: >-
+              {% set cam_idle = (not use_timer_snooze_var)
+                                 or (camera_timer_entity | string) in ['', 'None', 'none']
+                                 or is_state(camera_timer_entity, 'idle') %}
+              {% set all_idle = (not enable_snooze_all_var)
+                                 or (global_timer_entity | string) in ['', 'None', 'none']
+                                 or is_state(global_timer_entity, 'idle') %}
+              {{ cam_idle and all_idle }}
 
           # Snapshot to single rolling file
           - action: camera.snapshot
@@ -336,96 +465,34 @@ actions:
               intent_uri: >-
                 intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE={{ almtype }};S.ALMCHN={{ channel_mask }};S.ALMNAME=Detection;S.ALMTIME={{ now().isoformat() }};end
 
-          # Send to each selected device using templated notify service names
+          # Send to each selected device
           - repeat:
               for_each: "{{ notify_ids_list }}"
               sequence:
-                - choose:
-                    # URL ON + Silence ON
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ enable_open_url_button_var and (open_url_text | trim) != '' and show_silence_button_var }}"
-                      sequence:
-                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              image: "{{ snap_rel }}?v={{ bust }}"
-                              channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
-                              notification_icon: "{{ notification_icon_mdi_var }}"
-                              clickAction: "{{ intent_uri }}"
-                              actions:
-                                - action: URI
-                                  title: "{{ open_url_title_text }}"
-                                  uri: "{{ open_url_text }}"
-                                - action: URI
-                                  title: Open Reolink
-                                  uri: "{{ intent_uri }}"
-                                - action: SILENCE_THIS
-                                  title: "Silence {{ silence_minutes_var }}m"
-                                  icon: mdi:bell-sleep-outline
-
-                    # URL ON + Silence OFF
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ enable_open_url_button_var and (open_url_text | trim) != '' and not show_silence_button_var }}"
-                      sequence:
-                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              image: "{{ snap_rel }}?v={{ bust }}"
-                              channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
-                              notification_icon: "{{ notification_icon_mdi_var }}"
-                              clickAction: "{{ intent_uri }}"
-                              actions:
-                                - action: URI
-                                  title: "{{ open_url_title_text }}"
-                                  uri: "{{ open_url_text }}"
-                                - action: URI
-                                  title: Open Reolink
-                                  uri: "{{ intent_uri }}"
-
-                    # URL OFF + Silence ON
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ (not enable_open_url_button_var or (open_url_text | trim) == '') and show_silence_button_var }}"
-                      sequence:
-                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              image: "{{ snap_rel }}?v={{ bust }}"
-                              channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
-                              notification_icon: "{{ notification_icon_mdi_var }}"
-                              clickAction: "{{ intent_uri }}"
-                              actions:
-                                - action: URI
-                                  title: Open Reolink
-                                  uri: "{{ intent_uri }}"
-                                - action: SILENCE_THIS
-                                  title: "Silence {{ silence_minutes_var }}m"
-                                  icon: mdi:bell-sleep-outline
-
-                    # URL OFF + Silence OFF
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ (not enable_open_url_button_var or (open_url_text | trim) == '') and not show_silence_button_var }}"
-                      sequence:
-                        - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              image: "{{ snap_rel }}?v={{ bust }}"
-                              channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
-                              notification_icon: "{{ notification_icon_mdi_var }}"
-                              clickAction: "{{ intent_uri }}"
+                - variables:
+                    btn_snooze_title: "{{ 'Snooze ' ~ snooze_minutes_var ~ 'm' }}"
+                    btn_snooze_all_title: "{{ 'Snooze all ' ~ snooze_minutes_var ~ 'm' }}"
+                - service: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item, 'name') | slugify) }}"
+                  data:
+                    title: "{{ title_final }}"
+                    message: "{{ msg_final }}"
+                    data:
+                      image: "{{ snap_rel }}?v={{ bust }}"
+                      channel: "{{ android_channel_var }}"
+                      importance: "{{ android_importance_var }}"
+                      notification_icon: "{{ notification_icon_mdi_var }}"
+                      clickAction: "{{ intent_uri }}"
+                      actions: >-
+                        {%- set items = [] -%}
+                        {%- if enable_open_url_button_var and (open_url_text | trim) != '' -%}
+                          {%- set items = items + [ {'action':'URI','title':open_url_title_text,'uri':open_url_text} ] -%}
+                        {%- endif -%}
+                        {%- set items = items + [ {'action':'URI','title':'Open Reolink','uri':intent_uri} ] -%}
+                        {%- if show_silence_button_var -%}
+                          {%- set items = items + [ {'action':snooze_action_var,'title':btn_snooze_title,'icon':'mdi:bell-sleep-outline'} ] -%}
+                        {%- endif -%}
+                        {%- if enable_snooze_all_var -%}
+                          {%- set items = items + [ {'action':snooze_all_action_var,'title':btn_snooze_all_title,'icon':'mdi:bell-off'} ] -%}
+                        {%- endif -%}
+                        {{ items }}
     default: []
