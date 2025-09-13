@@ -7,8 +7,7 @@ blueprint:
       • Silence THIS (timer)
       • Silence ALL (optional list + this automation).
 
-    Uses device-based mobile_app notifications (no fragile templated service names),
-    forces fast delivery with priority: high and ttl: 0, and retains your snapshot paths.
+    Unique action IDs ensure “Silence THIS” affects only this automation.
   domain: automation
 
   input:
@@ -198,14 +197,14 @@ blueprint:
           max: 86400
           mode: box
 
-    # Android channel
+    # Android channel (display only)
     android_channel:
       name: Android notification channel name
       default: "Security"
       selector: { text: {} }
 
     android_importance:
-      name: Android channel importance
+      name: Android channel importance (display style)
       default: "high"
       selector:
         select:
@@ -214,7 +213,7 @@ blueprint:
 mode: queued
 max: 10
 
-# Make extra sensors list available to triggers
+# ensure template trigger can see inputs
 trigger_variables:
   extra_sensors_list: !input extra_sensors
 
@@ -224,7 +223,7 @@ triggers:
     entity_id: !input person_sensor
     to: "on"
 
-  # Works even if the list is empty
+  # Works even if list is empty
   - id: extra
     platform: template
     value_template: >-
@@ -262,7 +261,6 @@ variables:
   custom_message_text: !input custom_message
 
   filename_stem_var: !input filename_stem
-  # Keep your paths unchanged
   snap_abs: "{{ '/media/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
   snap_rel: "{{ '/media/local/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
   bust: "{{ (now() | as_timestamp) | int }}"
@@ -390,38 +388,191 @@ actions:
                 {% endif %}
               url_on: "{{ enable_open_url_button_var and (open_url_text | trim) != '' }}"
 
-              # Build actions list once, reuse for each device
-              actions_list: >-
-                {% set a = [] %}
-                {% if url_on %}
-                  {% set a = a + [{'action':'URI','title': open_url_title_text,'uri': open_url_text}] %}
-                {% endif %}
-                {% set a = a + [{'action':'URI','title':'Open Reolink','uri': intent_uri}] %}
-                {% if show_silence_this_var %}
-                  {% set a = a + [{'action': action_silence_one, 'title': 'Silence ' ~ silence_minutes_var ~ 'm', 'icon': 'mdi:bell-sleep-outline'}] %}
-                {% endif %}
-                {% if show_silence_all_var %}
-                  {% set a = a + [{'action': action_silence_all, 'title': 'Silence ALL ' ~ silence_minutes_var ~ 'm', 'icon': 'mdi:bell-outline'}] %}
-                {% endif %}
-                {{ a }}
-
-          # Send to each selected device via its mobile_app device notify
+          # Send to each selected device via its mobile_app notify service
           - repeat:
               for_each: "{{ notify_ids_list }}"
               sequence:
-                - device_id: "{{ repeat.item }}"
-                  domain: mobile_app
-                  type: notify
-                  title: "{{ title_final }}"
-                  message: "{{ msg_final }}"
-                  data:
-                    image: "{{ snap_rel }}?v={{ bust }}"
-                    channel: "{{ android_channel_var }}"
-                    # Fast delivery
-                    priority: high
-                    ttl: 0
-                    # Keep importance for users who configured channel behavior
-                    importance: "{{ android_importance_var }}"
-                    notification_icon: "{{ notification_icon_mdi_var }}"
-                    clickAction: "{{ intent_uri }}"
-                    actions: {{ actions_list }}
+                - variables:
+                    svc_name: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item,'name') | slugify) }}"
+
+                # URL ON + Silence THIS + Silence ALL
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ url_on and show_silence_this_var and show_silence_all_var }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
+                              clickAction: "{{ intent_uri }}"
+                              priority: high
+                              ttl: 0
+                              actions:
+                                - action: URI
+                                  title: "{{ open_url_title_text }}"
+                                  uri: "{{ open_url_text }}"
+                                - action: URI
+                                  title: Open Reolink
+                                  uri: "{{ intent_uri }}"
+                                - action: "{{ action_silence_one }}"
+                                  title: "Silence {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-sleep-outline
+                                - action: "{{ action_silence_all }}"
+                                  title: "Silence ALL {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-outline
+
+                    # URL ON + Silence THIS only
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ url_on and show_silence_this_var and not show_silence_all_var }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
+                              clickAction: "{{ intent_uri }}"
+                              priority: high
+                              ttl: 0
+                              actions:
+                                - action: URI
+                                  title: "{{ open_url_title_text }}"
+                                  uri: "{{ open_url_text }}"
+                                - action: URI
+                                  title: Open Reolink
+                                  uri: "{{ intent_uri }}"
+                                - action: "{{ action_silence_one }}"
+                                  title: "Silence {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-sleep-outline
+
+                    # URL ON + no Silence buttons
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ url_on and not show_silence_this_var and not show_silence_all_var }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
+                              clickAction: "{{ intent_uri }}"
+                              priority: high
+                              ttl: 0
+                              actions:
+                                - action: URI
+                                  title: "{{ open_url_title_text }}"
+                                  uri: "{{ open_url_text }}"
+                                - action: URI
+                                  title: Open Reolink
+                                  uri: "{{ intent_uri }}"
+
+                    # URL OFF + Silence THIS + Silence ALL
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ (not url_on) and show_silence_this_var and show_silence_all_var }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
+                              clickAction: "{{ intent_uri }}"
+                              priority: high
+                              ttl: 0
+                              actions:
+                                - action: URI
+                                  title: Open Reolink
+                                  uri: "{{ intent_uri }}"
+                                - action: "{{ action_silence_one }}"
+                                  title: "Silence {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-sleep-outline
+                                - action: "{{ action_silence_all }}"
+                                  title: "Silence ALL {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-outline
+
+                    # URL OFF + Silence THIS only
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ (not url_on) and show_silence_this_var and not show_silence_all_var }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
+                              clickAction: "{{ intent_uri }}"
+                              priority: high
+                              ttl: 0
+                              actions:
+                                - action: URI
+                                  title: Open Reolink
+                                  uri: "{{ intent_uri }}"
+                                - action: "{{ action_silence_one }}"
+                                  title: "Silence {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-sleep-outline
+
+                    # URL OFF + Silence ALL only
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ (not url_on) and not show_silence_this_var and show_silence_all_var }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
+                              clickAction: "{{ intent_uri }}"
+                              priority: high
+                              ttl: 0
+                              actions:
+                                - action: URI
+                                  title: Open Reolink
+                                  uri: "{{ intent_uri }}"
+                                - action: "{{ action_silence_all }}"
+                                  title: "Silence ALL {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-outline
+
+                    # URL OFF + no Silence buttons
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ (not url_on) and not show_silence_this_var and not show_silence_all_var }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              channel: "{{ android_channel_var }}"
+                              importance: "{{ android_importance_var }}"
+                              notification_icon: "{{ notification_icon_mdi_var }}"
+                              clickAction: "{{ intent_uri }}"
+                              priority: high
+                              ttl: 0
+    default: []
