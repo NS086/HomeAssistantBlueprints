@@ -197,14 +197,14 @@ blueprint:
           max: 86400
           mode: box
 
-    # Android channel (display only)
+    # Android channel
     android_channel:
       name: Android notification channel name
       default: "Security"
       selector: { text: {} }
 
     android_importance:
-      name: Android channel importance (display style)
+      name: Android channel importance
       default: "high"
       selector:
         select:
@@ -212,10 +212,6 @@ blueprint:
 
 mode: queued
 max: 10
-
-# ensure template trigger can see inputs
-trigger_variables:
-  extra_sensors_list: !input extra_sensors
 
 triggers:
   - id: person
@@ -411,8 +407,8 @@ actions:
                               importance: "{{ android_importance_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              priority: high
                               ttl: 0
+                              priority: high
                               actions:
                                 - action: URI
                                   title: "{{ open_url_title_text }}"
@@ -442,8 +438,8 @@ actions:
                               importance: "{{ android_importance_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              priority: high
                               ttl: 0
+                              priority: high
                               actions:
                                 - action: URI
                                   title: "{{ open_url_title_text }}"
@@ -470,8 +466,8 @@ actions:
                               importance: "{{ android_importance_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              priority: high
                               ttl: 0
+                              priority: high
                               actions:
                                 - action: URI
                                   title: "{{ open_url_title_text }}"
@@ -495,8 +491,8 @@ actions:
                               importance: "{{ android_importance_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              priority: high
                               ttl: 0
+                              priority: high
                               actions:
                                 - action: URI
                                   title: Open Reolink
@@ -523,8 +519,8 @@ actions:
                               importance: "{{ android_importance_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              priority: high
                               ttl: 0
+                              priority: high
                               actions:
                                 - action: URI
                                   title: Open Reolink
@@ -548,8 +544,8 @@ actions:
                               importance: "{{ android_importance_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              priority: high
                               ttl: 0
+                              priority: high
                               actions:
                                 - action: URI
                                   title: Open Reolink
@@ -573,6 +569,10 @@ actions:
                               importance: "{{ android_importance_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              priority: high
                               ttl: 0
+                              priority: high
+                              actions:
+                                - action: URI
+                                  title: Open Reolink
+                                  uri: "{{ intent_uri }}"
     default: []
