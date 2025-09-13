@@ -203,8 +203,8 @@ blueprint:
       default: "Security"
       selector: { text: {} }
 
-    android_importance:
-      name: Android channel importance
+    android_priority:
+      name: Android channel priority
       default: "high"
       selector:
         select:
@@ -263,7 +263,7 @@ variables:
 
   notification_icon_mdi_var: !input notification_icon_mdi
   android_channel_var: !input android_channel
-  android_importance_var: !input android_importance
+  android_priority_var: !input android_priority
 
   enable_open_url_button_var: !input enable_open_url_button
   open_url_text: !input open_url
@@ -404,7 +404,7 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              priority: "{{ android_priority_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
                               ttl: 0
@@ -435,7 +435,7 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              priority: "{{ android_priority_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
                               ttl: 0
@@ -463,7 +463,7 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              priority: "{{ android_priority_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
                               ttl: 0
@@ -488,7 +488,7 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              priority: "{{ android_priority_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
                               ttl: 0
@@ -516,7 +516,7 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              priority: "{{ android_priority_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
                               ttl: 0
@@ -541,7 +541,7 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              priority: "{{ android_priority_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
                               ttl: 0
@@ -566,7 +566,7 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              priority: "{{ android_priority_var }}"
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
                               ttl: 0
