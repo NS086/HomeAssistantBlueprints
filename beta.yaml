@@ -203,13 +203,6 @@ blueprint:
       default: "Security"
       selector: { text: {} }
 
-    android_importance:
-      name: Android channel importance
-      default: "high"
-      selector:
-        select:
-          options: [max, high, default, low, min]
-
 mode: queued
 max: 10
 
@@ -263,7 +256,6 @@ variables:
 
   notification_icon_mdi_var: !input notification_icon_mdi
   android_channel_var: !input android_channel
-  android_importance_var: !input android_importance
 
   enable_open_url_button_var: !input enable_open_url_button
   open_url_text: !input open_url
@@ -404,11 +396,11 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              importance: max
+                              priority: high
+                              ttl: 0
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              ttl: 0
-                              priority: high
                               actions:
                                 - action: URI
                                   title: "{{ open_url_title_text }}"
@@ -435,11 +427,11 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              importance: max
+                              priority: high
+                              ttl: 0
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              ttl: 0
-                              priority: high
                               actions:
                                 - action: URI
                                   title: "{{ open_url_title_text }}"
@@ -463,11 +455,11 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              importance: max
+                              priority: high
+                              ttl: 0
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              ttl: 0
-                              priority: high
                               actions:
                                 - action: URI
                                   title: "{{ open_url_title_text }}"
@@ -488,11 +480,11 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              importance: max
+                              priority: high
+                              ttl: 0
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              ttl: 0
-                              priority: high
                               actions:
                                 - action: URI
                                   title: Open Reolink
@@ -516,11 +508,11 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              importance: max
+                              priority: high
+                              ttl: 0
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              ttl: 0
-                              priority: high
                               actions:
                                 - action: URI
                                   title: Open Reolink
@@ -541,11 +533,11 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              importance: max
+                              priority: high
+                              ttl: 0
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              ttl: 0
-                              priority: high
                               actions:
                                 - action: URI
                                   title: Open Reolink
@@ -566,13 +558,9 @@ actions:
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
                               channel: "{{ android_channel_var }}"
-                              importance: "{{ android_importance_var }}"
+                              importance: max
+                              priority: high
+                              ttl: 0
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-                              ttl: 0
-                              priority: high
-                              actions:
-                                - action: URI
-                                  title: Open Reolink
-                                  uri: "{{ intent_uri }}"
     default: []
