@@ -3,11 +3,11 @@ blueprint:
   description: >
     Android snapshot notification with buttons:
       • Open URL (optional)
-      • Open Reolink (deep link)
+      • Open Reolink (launch app)
       • Silence THIS (timer)
       • Silence ALL (optional list + this automation).
 
-    Unique action IDs ensure “Silence THIS” affects only this automation.
+    Body tap opens the exact camera using a Reolink deep link.
   domain: automation
 
   input:
@@ -197,7 +197,7 @@ blueprint:
           max: 86400
           mode: box
 
-    # Android channel
+    # Android channel name (importance is forced to max in data)
     android_channel:
       name: Android notification channel name
       default: "Security"
@@ -274,15 +274,14 @@ variables:
 
   cooldown_seconds_var: !input cooldown_seconds
 
-  # Reolink deep link (simple form)
+  # Reolink deep link (exact camera) and app URI (open app)
   reolink_uid: !input reolink_uid
   reolink_devname: !input reolink_devname
   nvr_channel_index_var: !input nvr_channel_index
   channel_mask: "{{ (2 ** (nvr_channel_index_var | int - 1)) | int }}"
   intent_uri: >-
-    intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;
-    S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE=PEOPLE;S.ALMCHN={{ channel_mask }};
-    S.ALMNAME=Detection;S.ALMTIME={{ now().isoformat() }};end
+    intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE=PEOPLE;S.ALMCHN={{ channel_mask }};S.ALMNAME=Detection;S.ALMTIME={{ now().isoformat() }};end
+  reolink_app_uri: "app://com.mcu.reolink"
 
   # Unique action ids
   action_silence_one: "silence-one-{{ this.entity_id }}"
@@ -315,7 +314,7 @@ actions:
         sequence:
           - variables:
               all_list: >-
-                {{ ([this.entity_id] + (autos_all_list if autos_all_list is iterable else [])) | unique }}
+                {{ ([this.entity_id] + (autos_all_list if autos_all_list is iterable else [])) | unique | list }}
           - action: automation.turn_off
             target:
               entity_id: "{{ all_list }}"
@@ -407,7 +406,7 @@ actions:
                                   uri: "{{ open_url_text }}"
                                 - action: URI
                                   title: Open Reolink
-                                  uri: "{{ intent_uri }}"
+                                  uri: "{{ reolink_app_uri }}"
                                 - action: "{{ action_silence_one }}"
                                   title: "Silence {{ silence_minutes_var }}m"
                                   icon: mdi:bell-sleep-outline
@@ -438,7 +437,7 @@ actions:
                                   uri: "{{ open_url_text }}"
                                 - action: URI
                                   title: Open Reolink
-                                  uri: "{{ intent_uri }}"
+                                  uri: "{{ reolink_app_uri }}"
                                 - action: "{{ action_silence_one }}"
                                   title: "Silence {{ silence_minutes_var }}m"
                                   icon: mdi:bell-sleep-outline
@@ -466,7 +465,7 @@ actions:
                                   uri: "{{ open_url_text }}"
                                 - action: URI
                                   title: Open Reolink
-                                  uri: "{{ intent_uri }}"
+                                  uri: "{{ reolink_app_uri }}"
 
                     # URL OFF + Silence THIS + Silence ALL
                     - conditions:
@@ -488,7 +487,7 @@ actions:
                               actions:
                                 - action: URI
                                   title: Open Reolink
-                                  uri: "{{ intent_uri }}"
+                                  uri: "{{ reolink_app_uri }}"
                                 - action: "{{ action_silence_one }}"
                                   title: "Silence {{ silence_minutes_var }}m"
                                   icon: mdi:bell-sleep-outline
@@ -516,7 +515,7 @@ actions:
                               actions:
                                 - action: URI
                                   title: Open Reolink
-                                  uri: "{{ intent_uri }}"
+                                  uri: "{{ reolink_app_uri }}"
                                 - action: "{{ action_silence_one }}"
                                   title: "Silence {{ silence_minutes_var }}m"
                                   icon: mdi:bell-sleep-outline
@@ -541,7 +540,7 @@ actions:
                               actions:
                                 - action: URI
                                   title: Open Reolink
-                                  uri: "{{ intent_uri }}"
+                                  uri: "{{ reolink_app_uri }}"
                                 - action: "{{ action_silence_all }}"
                                   title: "Silence ALL {{ silence_minutes_var }}m"
                                   icon: mdi:bell-outline
@@ -563,4 +562,3 @@ actions:
                               ttl: 0
                               notification_icon: "{{ notification_icon_mdi_var }}"
                               clickAction: "{{ intent_uri }}"
-    default: []
