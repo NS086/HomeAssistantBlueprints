@@ -166,4 +166,6 @@ Yes — set **Snooze duration** per automation instance. Share one timer for a *
 
 ## Changelog
 
+- **v1.1** - Updates include:
+  - Removing Android notification importance as this impacts notification channels. By default the priority is set to the highest. Note you will require a new channel for this to work.
 - **v1.0** — Initial public draft (snapshot, actions, snooze, Android channel, optional visitor trigger).
