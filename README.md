@@ -96,19 +96,19 @@ end
 - `<UID>` — Reolink **camera or NVR UID**  
 - `<DEVICE_NAME>` — device name as shown in the Reolink app/NVR  
 - `<ALARM_TYPE>` — use `PEOPLE` or `VEHICLE` (any non-empty string works; keep it present)  
-- `<CHANNEL>` — **bitmask** of the NVR channel to open  
-  - Ch 1 → `1`, Ch 2 → `2`, Ch 3 → `4`, Ch 4 → `8`, … Ch **N** → `2^(N-1)`  
+- `<CHANNEL>` 
+  - This should be the camera channel number in the NVR. 
   - For direct-to-camera (no NVR), set `1` and rely on the **UID** to select the device  
 - `<ALARM_DATE>` — ISO-8601 timestamp  
-  - Within ~2 minutes of “now” → **Live View**  
-  - Older → **Playback** at that time  
+  - Within ~2 minutes of “now” will open the **Live View**  
+  - Older than two minutes will open **Playback** at that time  
   - In HA templates: `{{ now().isoformat() }}`
 
 ### Example: doorbell on NVR channel 8
 
 Assume:
 - NVR UID `998877AABBCC` and name `MyNvr`  
-- Doorbell on **channel 8** → bitmask `2^(8-1) = 128`
+- Doorbell on **channel 8** → bitmask `2^(8-1) = 128` (This is calculated for you automatically in the template)
 
 The blueprint’s **Open Reolink** action becomes:
 
@@ -122,11 +122,10 @@ intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.inte
 
 - **Triggers**: person sensor (required) and optional extra sensors (visitor/pressed). Multiple triggers are **OR**.  
 - **Mode**: `queued` (no lost events; back-to-back runs queue up).  
-- **Snooze**: pressing _Snooze 6h_ fires a `mobile_app_notification_action` event that starts the timer. While the timer is **active**, alerts are **suppressed**.  
+- **Snooze**: pressing Snooze 30m fires a `mobile_app_notification_action` event that disables the automation for the specified amount of time
 - **Snapshot**: `camera.snapshot` writes to `/media/reolink/<stem>_latest.jpg`, then the notification loads `/media/local/...?_cache_bust=<timestamp>` to force a fresh image while keeping only one file on disk.  
 - **Notification title**: defaults to **“Person detected at _<Camera Friendly Name>_”** (doorbells show “Doorbell pressed at …”).  
 - **Android channel**: channel is created on first use with your chosen name/importance; tune sound/vibration per-channel in Android Settings.  
-- **Action buttons**: _Open Frigate_, _Open Reolink_, and _Snooze 6h_.
 
 ---
 
@@ -140,7 +139,7 @@ intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;action=android.inte
   - On Android, confirm the Reolink app is installed and the intent scheme is supported.
 
 - **Wrong camera opens in Reolink**  
-  - Double-check the **UID** and the **channel bitmask** (`2^(N-1)`).
+  - Double-check the **UID** and the **channel**
 
 ---
 
