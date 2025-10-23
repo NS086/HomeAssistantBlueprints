@@ -1,14 +1,20 @@
 blueprint:
-  name: Reolink Camera Alert (iOS, Snapshot + Silence THIS/ALL)
+  name: Reolink Camera Alert (iOS, Snapshot + Live View + Snooze THIS/ALL)
   description: >
-    iOS snapshot notification with buttons:
-      • Open URL (optional)
+    iOS snapshot notification with:
+      • Tap to open URL (default: /lovelace)
+      • Optional "Open URL" button
+      • Live View attachment (optional)
+      • Sound/volume/critical (iOS)
       • Silence THIS (timer)
-      • Silence ALL (optional list + this automation).
-    Optionally attach a live camera entity (iOS-only). Includes presence/quiet hours/cooldown.
+      • Silence ALL (optional list + this automation)
+
+    Note: iOS does not support Reolink deep links; this blueprint does not attempt them.
+
   domain: automation
 
   input:
+    # Triggers
     person_sensor:
       name: Person sensor (binary_sensor)
       selector:
@@ -26,6 +32,7 @@ blueprint:
             domain:
               - binary_sensor
 
+    # Camera + notify
     camera:
       name: Camera entity
       selector:
@@ -39,6 +46,7 @@ blueprint:
           integration: mobile_app
           multiple: true
 
+    # Texts
     custom_title:
       name: Custom notification title (optional)
       description: Leave blank for empty title.
@@ -58,19 +66,14 @@ blueprint:
       default: "camera"
       selector: { text: {} }
 
-    notification_icon_mdi:
-      name: (Optional) Notification icon (mdi)
-      description: iOS ignores icons; kept for parity.
-      default: "mdi:cctv"
-      selector: { icon: {} }
-
+    # Optional URL action & tap
     enable_open_url_button:
       name: Show "Open URL" button
       default: false
       selector: { boolean: {} }
 
     open_url:
-      name: URL to open
+      name: URL to open (button)
       default: ""
       selector: { text: {} }
 
@@ -79,6 +82,13 @@ blueprint:
       default: "Open URL"
       selector: { text: {} }
 
+    tap_url:
+      name: Tap (open on notification tap)
+      description: Relative (e.g. /lovelace) or absolute URL. Leave blank to do nothing on tap.
+      default: "/lovelace"
+      selector: { text: {} }
+
+    # Snooze buttons
     show_silence_this_button:
       name: Show "Silence this camera" button
       default: true
@@ -110,6 +120,7 @@ blueprint:
           domain: automation
           multiple: true
 
+    # Filters
     presence_filter_enabled:
       name: Enable presence filter
       default: false
@@ -171,30 +182,23 @@ blueprint:
           max: 86400
           mode: box
 
+    # iOS options
     ios_live_view:
-      name: Live View Entity – iOS only (Optional)
-      description: Attach a live camera view to the notification on iOS.
+      name: iOS Live View Entity (optional)
+      description: Attach live view for iOS devices only.
       default: ""
       selector:
         entity:
-          filter:
-            domain:
-              - camera
           multiple: false
 
     ios_sound_name:
-      name: iOS sound name
-      description: Use a system sound or a custom imported sound (without extension).
+      name: iOS Sound (optional)
+      description: Set to 'default', 'none', or a custom sound you've added.
       default: "default"
-      selector:
-        select:
-          options:
-            - default
-            - none
-          custom_value: true
+      selector: { text: {} }
 
     ios_sound_volume:
-      name: iOS sound volume (0–100)
+      name: iOS Sound Volume (0–100)
       default: 100
       selector:
         number:
@@ -202,11 +206,10 @@ blueprint:
           max: 100
           step: 1
           mode: slider
-          unit_of_measurement: "%"
 
     ios_critical:
-      name: iOS critical alert
-      description: Overrides silent/DND when allowed in iOS settings.
+      name: iOS Critical Alert
+      description: If true, iOS will treat as critical (uses system critical sounds).
       default: false
       selector: { boolean: {} }
 
@@ -219,6 +222,7 @@ triggers:
     entity_id: !input person_sensor
     to: "on"
 
+  # Works even if list is empty
   - id: extra
     platform: template
     value_template: >-
@@ -229,6 +233,7 @@ triggers:
         {{ (ents | selectattr('state','eq','on') | list | length) > 0 }}
       {% endif %}
 
+  # iOS mobile notification actions – unique per automation instance
   - id: silence_one
     platform: event
     event_type: mobile_app_notification_action
@@ -241,6 +246,7 @@ triggers:
     event_data:
       action: silence-all-{{ this.entity_id }}
 
+# Variables
 variables:
   camera_entity: !input camera
   cam_name: "{{ state_attr(camera_entity, 'friendly_name') or camera_entity }}"
@@ -254,15 +260,15 @@ variables:
   custom_message_text: !input custom_message
 
   filename_stem_var: !input filename_stem
+  # Snapshot paths (unchanged style)
   snap_abs: "{{ '/media/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
   snap_rel: "{{ '/media/local/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
   bust: "{{ (now() | as_timestamp) | int }}"
 
-  notification_icon_mdi_var: !input notification_icon_mdi
-
   enable_open_url_button_var: !input enable_open_url_button
   open_url_text: !input open_url
   open_url_title_text: !input open_url_title
+  tap_url_text: !input tap_url
 
   show_silence_this_var: !input show_silence_this_button
   show_silence_all_var: !input show_silence_all_button
@@ -277,20 +283,21 @@ variables:
 
   cooldown_seconds_var: !input cooldown_seconds
 
+  # Unique action ids
+  action_silence_one: "silence-one-{{ this.entity_id }}"
+  action_silence_all: "silence-all-{{ this.entity_id }}"
+
+  # iOS options
   ios_live_view_entity: !input ios_live_view
   ios_sound_name_var: !input ios_sound_name
   ios_sound_volume_pct: !input ios_sound_volume
   ios_sound_volume_float: "{{ (ios_sound_volume_pct | int(100)) / 100 }}"
   ios_critical_var: !input ios_critical
 
-  action_silence_one: "silence-one-{{ this.entity_id }}"
-  action_silence_all: "silence-all-{{ this.entity_id }}"
-
 conditions: []
 
 actions:
   - choose:
-
       # ---------- Silence THIS ----------
       - conditions:
           - condition: trigger
@@ -314,7 +321,7 @@ actions:
         sequence:
           - variables:
               all_list: >-
-                {{ ([this.entity_id] + (autos_all_list if autos_all_list is iterable else [])) | unique | list }}
+                {{ ([this.entity_id] + (autos_all_list if autos_all_list is iterable else [])) | unique }}
           - action: automation.turn_off
             target:
               entity_id: "{{ all_list }}"
@@ -353,7 +360,7 @@ actions:
               {{ (disable_hours_list | length == 0)
                  or (now().hour not in disable_hours_list) }}
 
-          # Snapshot
+          # Snapshot (single rolling file)
           - action: camera.snapshot
             data:
               entity_id: !input camera
@@ -374,14 +381,16 @@ actions:
                      | replace('{event}', event_text) }}
                 {% endif %}
               url_on: "{{ enable_open_url_button_var and (open_url_text | trim) != '' }}"
+              tap_url_final: "{{ tap_url_text | trim }}"
 
-          # Send per-device — branch WITH or WITHOUT URL action
+          # Send to each selected iOS device via its mobile_app notify service
           - repeat:
               for_each: "{{ notify_ids_list }}"
               sequence:
                 - variables:
                     svc_name: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item,'name') | slugify) }}"
 
+                # ----- WITH Open URL button -----
                 - choose:
                     - conditions:
                         - condition: template
@@ -392,21 +401,31 @@ actions:
                             title: "{{ title_final }}"
                             message: "{{ msg_final }}"
                             data:
+                              # iOS image
                               image: "{{ snap_rel }}?v={{ bust }}"
+                              # Tap target (if provided)
+                              url: "{{ tap_url_final if tap_url_final != '' else none }}"
+                              # iOS sound/critical
                               push:
                                 sound:
                                   name: "{{ ios_sound_name_var }}"
                                   volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
                                   critical: "{{ 1 if ios_critical_var else 0 }}"
+                              # iOS live view (optional)
                               entity_id: "{{ ios_live_view_entity }}"
+                              # Buttons
                               actions:
                                 - action: URI
                                   title: "{{ open_url_title_text }}"
                                   uri: "{{ open_url_text }}"
                                 - action: "{{ action_silence_one }}"
                                   title: "Silence {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-sleep-outline
                                 - action: "{{ action_silence_all }}"
                                   title: "Silence ALL {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-outline
+
+                    # ----- WITHOUT Open URL button -----
                     - conditions:
                         - condition: template
                           value_template: "{{ not url_on }}"
@@ -417,6 +436,7 @@ actions:
                             message: "{{ msg_final }}"
                             data:
                               image: "{{ snap_rel }}?v={{ bust }}"
+                              url: "{{ tap_url_final if tap_url_final != '' else none }}"
                               push:
                                 sound:
                                   name: "{{ ios_sound_name_var }}"
@@ -426,6 +446,8 @@ actions:
                               actions:
                                 - action: "{{ action_silence_one }}"
                                   title: "Silence {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-sleep-outline
                                 - action: "{{ action_silence_all }}"
                                   title: "Silence ALL {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-outline
     default: []
