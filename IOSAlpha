@@ -1,7 +1,8 @@
 blueprint:
   name: Reolink Camera Alert (iOS, Proxy Image + Silence THIS/ALL)
   description: >
-    iOS snapshot-style notification using camera proxy (works reliably on iOS) with buttons:
+    iOS snapshot-style notification using camera proxy (requires FULL https URL)
+    with buttons:
       • Open URL (optional)
       • Silence THIS (timer)
       • Silence ALL (optional list + this automation).
@@ -43,10 +44,19 @@ blueprint:
           integration: mobile_app
           multiple: true
 
+    # --- NEW: Base URL for iOS attachments ---
+    base_url:
+      name: External Base URL (required for iOS attachments)
+      description: >
+        Full URL to your Home Assistant (e.g., https://ha.example.com).
+        Must be reachable from the phone (Wi-Fi & cellular). Nabu Casa URL works.
+      default: ""
+      selector:
+        text:
+
     # Texts
     custom_title:
       name: Notification title (optional)
-      description: Leave blank for empty title.
       default: ""
       selector: { text: {} }
 
@@ -97,9 +107,6 @@ blueprint:
 
     automations_to_silence:
       name: Other automations to silence (optional)
-      description: >
-        If "Silence ALL" is enabled, these automations (plus this one) will be
-        turned off then re-enabled after the delay.
       default: []
       selector:
         entity:
@@ -127,7 +134,6 @@ blueprint:
 
     disable_hours:
       name: Quiet hours (0–23, optional)
-      description: Suppress notifications during selected hours.
       default: []
       selector:
         select:
@@ -160,7 +166,6 @@ blueprint:
 
     cooldown_seconds:
       name: Cooldown (seconds, optional)
-      description: Minimum time between alerts from this automation.
       default: 0
       selector:
         number:
@@ -258,10 +263,13 @@ variables:
   custom_title_text: !input custom_title
   custom_message_text: !input custom_message
 
-  # iOS camera still image via proxy (best for iOS)
-  camera_proxy_url: >-
+  # Build FULL iOS attachment URL: <base_url>/api/camera_proxy/<entity_id>?token=...
+  base_url_input: !input base_url
+  camera_proxy_path: >-
     {{ '/api/camera_proxy/' ~ camera_entity
        ~ (('?token=' ~ state_attr(camera_entity,'access_token')) if state_attr(camera_entity,'access_token') else '') }}
+  camera_proxy_full: >-
+    {{ (base_url_input | trim).rstrip('/') ~ camera_proxy_path }}
 
   # Optional rolling snapshot (kept for parity; not required for iOS)
   filename_stem_var: !input filename_stem
@@ -401,21 +409,16 @@ actions:
                             title: "{{ title_final }}"
                             message: "{{ msg_final }}"
                             data:
-                              # iOS attachment via camera proxy
                               attachment:
-                                url: "{{ camera_proxy_url }}"
+                                url: "{{ camera_proxy_full }}"
                                 content-type: jpeg
-                              # Tap to open URL (optional)
                               url: "{{ open_url_text }}"
-                              # iOS sound/critical
                               push:
                                 sound:
                                   name: "{{ ios_sound_name_var }}"
                                   volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
                                   critical: "{{ 1 if ios_critical_var else 0 }}"
-                              # Live View (optional)
                               entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
-                              # Buttons
                               actions:
                                 - action: URI
                                   title: "{{ open_url_title_text }}"
@@ -438,7 +441,7 @@ actions:
                             message: "{{ msg_final }}"
                             data:
                               attachment:
-                                url: "{{ camera_proxy_url }}"
+                                url: "{{ camera_proxy_full }}"
                                 content-type: jpeg
                               url: "{{ open_url_text }}"
                               push:
@@ -466,7 +469,7 @@ actions:
                             message: "{{ msg_final }}"
                             data:
                               attachment:
-                                url: "{{ camera_proxy_url }}"
+                                url: "{{ camera_proxy_full }}"
                                 content-type: jpeg
                               url: "{{ open_url_text }}"
                               push:
@@ -476,7 +479,7 @@ actions:
                                   critical: "{{ 1 if ios_critical_var else 0 }}"
                               entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
 
-                    # URL OFF + Silence buttons (THIS + ALL)
+                    # URL OFF + Silence THIS + ALL
                     - conditions:
                         - condition: template
                           value_template: "{{ (not url_on) and show_silence_this_var and show_silence_all_var }}"
@@ -487,7 +490,7 @@ actions:
                             message: "{{ msg_final }}"
                             data:
                               attachment:
-                                url: "{{ camera_proxy_url }}"
+                                url: "{{ camera_proxy_full }}"
                                 content-type: jpeg
                               push:
                                 sound:
@@ -514,7 +517,7 @@ actions:
                             message: "{{ msg_final }}"
                             data:
                               attachment:
-                                url: "{{ camera_proxy_url }}"
+                                url: "{{ camera_proxy_full }}"
                                 content-type: jpeg
                               push:
                                 sound:
@@ -538,7 +541,7 @@ actions:
                             message: "{{ msg_final }}"
                             data:
                               attachment:
-                                url: "{{ camera_proxy_url }}"
+                                url: "{{ camera_proxy_full }}"
                                 content-type: jpeg
                               push:
                                 sound:
