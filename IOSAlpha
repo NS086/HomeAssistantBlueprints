@@ -5,12 +5,10 @@ blueprint:
       • Open URL (optional)
       • Silence THIS (timer)
       • Silence ALL (optional list + this automation).
-
     Optionally attach a live camera entity (iOS-only). Includes presence/quiet hours/cooldown.
   domain: automation
 
   input:
-    # Triggers
     person_sensor:
       name: Person sensor (binary_sensor)
       selector:
@@ -25,17 +23,14 @@ blueprint:
         entity:
           multiple: true
           filter:
-            domain:
-              - binary_sensor
+            domain: [binary_sensor]
 
-    # Camera
     camera:
       name: Camera entity
       selector:
         entity:
           domain: camera
 
-    # Notifying devices (iOS – Home Assistant app)
     notify_devices:
       name: iOS devices to notify (mobile_app)
       selector:
@@ -43,7 +38,6 @@ blueprint:
           integration: mobile_app
           multiple: true
 
-    # Texts
     custom_title:
       name: Custom notification title (optional)
       description: Leave blank for empty title.
@@ -58,7 +52,6 @@ blueprint:
       default: ""
       selector: { text: {} }
 
-    # Snapshot filename stem (keeps your existing paths)
     filename_stem:
       name: Snapshot filename stem (no extension)
       default: "camera"
@@ -66,11 +59,10 @@ blueprint:
 
     notification_icon_mdi:
       name: (Optional) Notification icon (mdi)
-      description: Visible mainly on Android/TV; iOS ignores. Kept for parity.
+      description: iOS ignores icons; kept for parity.
       default: "mdi:cctv"
       selector: { icon: {} }
 
-    # Optional URL button
     enable_open_url_button:
       name: Show "Open URL" button
       default: false
@@ -86,7 +78,6 @@ blueprint:
       default: "Open URL"
       selector: { text: {} }
 
-    # Silence buttons
     show_silence_this_button:
       name: Show "Silence this camera" button
       default: true
@@ -118,7 +109,6 @@ blueprint:
           domain: automation
           multiple: true
 
-    # Filters
     presence_filter_enabled:
       name: Enable presence filter
       default: false
@@ -132,10 +122,7 @@ blueprint:
         entity:
           multiple: true
           filter:
-            domain:
-              - device_tracker
-              - person
-              - group
+            domain: [device_tracker, person, group]
 
     disable_hours:
       name: Quiet hours (0–23, optional)
@@ -145,30 +132,8 @@ blueprint:
         select:
           multiple: true
           options:
-            - "0"
-            - "1"
-            - "2"
-            - "3"
-            - "4"
-            - "5"
-            - "6"
-            - "7"
-            - "8"
-            - "9"
-            - "10"
-            - "11"
-            - "12"
-            - "13"
-            - "14"
-            - "15"
-            - "16"
-            - "17"
-            - "18"
-            - "19"
-            - "20"
-            - "21"
-            - "22"
-            - "23"
+            - "0"  - "1"  - "2"  - "3"  - "4"  - "5"  - "6"  - "7"  - "8"  - "9"  - "10" - "11"
+            - "12" - "13" - "14" - "15" - "16" - "17" - "18" - "19" - "20" - "21" - "22" - "23"
 
     cooldown_seconds:
       name: Cooldown (seconds, optional)
@@ -180,7 +145,6 @@ blueprint:
           max: 86400
           mode: box
 
-    # iOS-only extras
     ios_live_view:
       name: Live View Entity – iOS only (Optional)
       description: Attach a live camera view to the notification on iOS.
@@ -188,8 +152,7 @@ blueprint:
       selector:
         entity:
           filter:
-            domain:
-              - camera
+            domain: [camera]
           multiple: false
 
     ios_sound_name:
@@ -198,9 +161,7 @@ blueprint:
       default: "default"
       selector:
         select:
-          options:
-            - default
-            - none
+          options: [default, none]
           custom_value: true
 
     ios_sound_volume:
@@ -216,7 +177,7 @@ blueprint:
 
     ios_critical:
       name: iOS critical alert
-      description: Overrides silent/DND when allowed for the app on the device.
+      description: Overrides silent/DND when allowed in iOS settings.
       default: false
       selector: { boolean: {} }
 
@@ -239,7 +200,6 @@ triggers:
         {{ (ents | selectattr('state','eq','on') | list | length) > 0 }}
       {% endif %}
 
-  # iOS actionable notification taps (unique per automation)
   - id: silence_one
     platform: event
     event_type: mobile_app_notification_action
@@ -252,7 +212,6 @@ triggers:
     event_data:
       action: silence-all-{{ this.entity_id }}
 
-# Variables
 variables:
   camera_entity: !input camera
   cam_name: "{{ state_attr(camera_entity, 'friendly_name') or camera_entity }}"
@@ -289,14 +248,12 @@ variables:
 
   cooldown_seconds_var: !input cooldown_seconds
 
-  # iOS notification fields
   ios_live_view_entity: !input ios_live_view
   ios_sound_name_var: !input ios_sound_name
   ios_sound_volume_pct: !input ios_sound_volume
   ios_sound_volume_float: "{{ (ios_sound_volume_pct | int(100)) / 100 }}"
   ios_critical_var: !input ios_critical
 
-  # Unique action ids
   action_silence_one: "silence-one-{{ this.entity_id }}"
   action_silence_all: "silence-all-{{ this.entity_id }}"
 
@@ -304,6 +261,7 @@ conditions: []
 
 actions:
   - choose:
+
       # ---------- Silence THIS ----------
       - conditions:
           - condition: trigger
@@ -339,7 +297,7 @@ actions:
             target:
               entity_id: "{{ all_list }}"
 
-      # ---------- Main iOS notification path ----------
+      # ---------- Main notification path ----------
       - conditions:
           - condition: template
             value_template: "{{ trigger.id in ['person','extra'] }}"
@@ -366,7 +324,7 @@ actions:
               {{ (disable_hours_list | length == 0)
                  or (now().hour not in disable_hours_list) }}
 
-          # Snapshot to a single rolling file
+          # Snapshot
           - action: camera.snapshot
             data:
               entity_id: !input camera
@@ -388,35 +346,48 @@ actions:
                 {% endif %}
               url_on: "{{ enable_open_url_button_var and (open_url_text | trim) != '' }}"
 
-          # Send to each selected iOS device via its mobile_app notify service
+          # Send per-device — branch WITH or WITHOUT URL action
           - repeat:
               for_each: "{{ notify_ids_list }}"
               sequence:
                 - variables:
                     svc_name: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item,'name') | slugify) }}"
 
-                - service: "{{ svc_name }}"
-                  data:
-                    title: "{{ title_final }}"
-                    message: "{{ msg_final }}"
-                    data:
-                      # Image (still)
-                      image: "{{ snap_rel }}?v={{ bust }}"
-
-                      # iOS sound (name, volume, critical)
-                      push:
-                        sound:
-                          name: "{{ ios_sound_name_var }}"
-                          volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
-                          critical: "{{ 1 if ios_critical_var else 0 }}"
-
-                      # Live View (iOS only) — empty string is ignored
-                      entity_id: "{{ ios_live_view_entity }}"
-
-                      # Optional URL action button
-                      {% if url_on %}
-                      actions:
-                        - action: URI
-                          title: "{{ open_url_title_text }}"
-                          uri: "{{ open_url_text }}"
-                      {% endif %}
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ url_on }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              push:
+                                sound:
+                                  name: "{{ ios_sound_name_var }}"
+                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
+                                  critical: "{{ 1 if ios_critical_var else 0 }}"
+                              entity_id: "{{ ios_live_view_entity }}"
+                              actions:
+                                - action: URI
+                                  title: "{{ open_url_title_text }}"
+                                  uri: "{{ open_url_text }}"
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ not url_on }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              image: "{{ snap_rel }}?v={{ bust }}"
+                              push:
+                                sound:
+                                  name: "{{ ios_sound_name_var }}"
+                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
+                                  critical: "{{ 1 if ios_critical_var else 0 }}"
+                              entity_id: "{{ ios_live_view_entity }}"
+    default: []
