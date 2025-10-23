@@ -23,7 +23,8 @@ blueprint:
         entity:
           multiple: true
           filter:
-            domain: [binary_sensor]
+            domain:
+              - binary_sensor
 
     camera:
       name: Camera entity
@@ -122,7 +123,10 @@ blueprint:
         entity:
           multiple: true
           filter:
-            domain: [device_tracker, person, group]
+            domain:
+              - device_tracker
+              - person
+              - group
 
     disable_hours:
       name: Quiet hours (0–23, optional)
@@ -132,8 +136,30 @@ blueprint:
         select:
           multiple: true
           options:
-            - "0"  - "1"  - "2"  - "3"  - "4"  - "5"  - "6"  - "7"  - "8"  - "9"  - "10" - "11"
-            - "12" - "13" - "14" - "15" - "16" - "17" - "18" - "19" - "20" - "21" - "22" - "23"
+            - "0"
+            - "1"
+            - "2"
+            - "3"
+            - "4"
+            - "5"
+            - "6"
+            - "7"
+            - "8"
+            - "9"
+            - "10"
+            - "11"
+            - "12"
+            - "13"
+            - "14"
+            - "15"
+            - "16"
+            - "17"
+            - "18"
+            - "19"
+            - "20"
+            - "21"
+            - "22"
+            - "23"
 
     cooldown_seconds:
       name: Cooldown (seconds, optional)
@@ -152,7 +178,8 @@ blueprint:
       selector:
         entity:
           filter:
-            domain: [camera]
+            domain:
+              - camera
           multiple: false
 
     ios_sound_name:
@@ -161,7 +188,9 @@ blueprint:
       default: "default"
       selector:
         select:
-          options: [default, none]
+          options:
+            - default
+            - none
           custom_value: true
 
     ios_sound_volume:
@@ -374,6 +403,10 @@ actions:
                                 - action: URI
                                   title: "{{ open_url_title_text }}"
                                   uri: "{{ open_url_text }}"
+                                - action: "{{ action_silence_one }}"
+                                  title: "Silence {{ silence_minutes_var }}m"
+                                - action: "{{ action_silence_all }}"
+                                  title: "Silence ALL {{ silence_minutes_var }}m"
                     - conditions:
                         - condition: template
                           value_template: "{{ not url_on }}"
@@ -390,4 +423,9 @@ actions:
                                   volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
                                   critical: "{{ 1 if ios_critical_var else 0 }}"
                               entity_id: "{{ ios_live_view_entity }}"
+                              actions:
+                                - action: "{{ action_silence_one }}"
+                                  title: "Silence {{ silence_minutes_var }}m"
+                                - action: "{{ action_silence_all }}"
+                                  title: "Silence ALL {{ silence_minutes_var }}m"
     default: []
