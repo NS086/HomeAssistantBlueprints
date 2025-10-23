@@ -1,16 +1,12 @@
 blueprint:
-  name: Reolink Camera Alert (iOS, Snapshot + Live View + Snooze THIS/ALL)
+  name: Reolink Camera Alert (iOS, Proxy Image + Silence THIS/ALL)
   description: >
-    iOS snapshot notification with:
-      • Tap to open URL (default: /lovelace)
-      • Optional "Open URL" button
-      • Live View attachment (optional)
-      • Sound/volume/critical (iOS)
+    iOS snapshot-style notification using camera proxy (works reliably on iOS) with buttons:
+      • Open URL (optional)
       • Silence THIS (timer)
-      • Silence ALL (optional list + this automation)
+      • Silence ALL (optional list + this automation).
 
-    Note: iOS does not support Reolink deep links; this blueprint does not attempt them.
-
+    Includes presence filter, quiet hours, cooldown, iOS live view, and iOS sound volume.
   domain: automation
 
   input:
@@ -32,15 +28,16 @@ blueprint:
             domain:
               - binary_sensor
 
-    # Camera + notify
+    # Camera
     camera:
       name: Camera entity
       selector:
         entity:
           domain: camera
 
+    # Target devices (iOS devices using mobile_app)
     notify_devices:
-      name: iOS devices to notify (mobile_app)
+      name: iPhones/iPads to notify (mobile_app)
       selector:
         device:
           integration: mobile_app
@@ -48,32 +45,27 @@ blueprint:
 
     # Texts
     custom_title:
-      name: Custom notification title (optional)
+      name: Notification title (optional)
       description: Leave blank for empty title.
       default: ""
       selector: { text: {} }
 
     custom_message:
-      name: Custom notification text (optional)
+      name: Notification text (optional)
       description: >
         Placeholders: {camera_name}, {event}.
         Blank → "Person detected at {camera_name}".
       default: ""
       selector: { text: {} }
 
-    filename_stem:
-      name: Snapshot filename stem (no extension)
-      default: "camera"
-      selector: { text: {} }
-
-    # Optional URL action & tap
+    # Optional URL action
     enable_open_url_button:
       name: Show "Open URL" button
       default: false
       selector: { boolean: {} }
 
     open_url:
-      name: URL to open (button)
+      name: URL to open
       default: ""
       selector: { text: {} }
 
@@ -82,13 +74,7 @@ blueprint:
       default: "Open URL"
       selector: { text: {} }
 
-    tap_url:
-      name: Tap (open on notification tap)
-      description: Relative (e.g. /lovelace) or absolute URL. Leave blank to do nothing on tap.
-      default: "/lovelace"
-      selector: { text: {} }
-
-    # Snooze buttons
+    # Silence buttons & scope
     show_silence_this_button:
       name: Show "Silence this camera" button
       default: true
@@ -182,23 +168,31 @@ blueprint:
           max: 86400
           mode: box
 
-    # iOS options
-    ios_live_view:
-      name: iOS Live View Entity (optional)
-      description: Attach live view for iOS devices only.
+    # iOS specifics
+    ios_live_view_entity:
+      name: iOS Live View entity (optional)
+      description: Attach live view from this entity in iOS notifications.
       default: ""
       selector:
         entity:
           multiple: false
+          filter:
+            domain:
+              - camera
 
     ios_sound_name:
-      name: iOS Sound (optional)
-      description: Set to 'default', 'none', or a custom sound you've added.
+      name: iOS Sound name
+      description: Use "default" for default sound, or "none" for no sound.
       default: "default"
-      selector: { text: {} }
+      selector:
+        select:
+          options:
+            - default
+            - none
+          custom_value: true
 
     ios_sound_volume:
-      name: iOS Sound Volume (0–100)
+      name: iOS Sound volume (0–100)
       default: 100
       selector:
         number:
@@ -208,10 +202,16 @@ blueprint:
           mode: slider
 
     ios_critical:
-      name: iOS Critical Alert
-      description: If true, iOS will treat as critical (uses system critical sounds).
+      name: iOS Critical alert (bypass mute/DND)
       default: false
-      selector: { boolean: {} }
+      selector:
+        boolean: {}
+
+    # (Optional) also save a rolling snapshot on disk (not required for iOS)
+    filename_stem:
+      name: Snapshot filename stem (no extension)
+      default: "camera"
+      selector: { text: {} }
 
 mode: queued
 max: 10
@@ -222,7 +222,6 @@ triggers:
     entity_id: !input person_sensor
     to: "on"
 
-  # Works even if list is empty
   - id: extra
     platform: template
     value_template: >-
@@ -233,7 +232,7 @@ triggers:
         {{ (ents | selectattr('state','eq','on') | list | length) > 0 }}
       {% endif %}
 
-  # iOS mobile notification actions – unique per automation instance
+  # Mobile actions (unique per automation instance)
   - id: silence_one
     platform: event
     event_type: mobile_app_notification_action
@@ -259,16 +258,15 @@ variables:
   custom_title_text: !input custom_title
   custom_message_text: !input custom_message
 
-  filename_stem_var: !input filename_stem
-  # Snapshot paths (unchanged style)
-  snap_abs: "{{ '/media/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
-  snap_rel: "{{ '/media/local/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
-  bust: "{{ (now() | as_timestamp) | int }}"
+  # iOS camera still image via proxy (best for iOS)
+  camera_proxy_url: >-
+    {{ '/api/camera_proxy/' ~ camera_entity
+       ~ (('?token=' ~ state_attr(camera_entity,'access_token')) if state_attr(camera_entity,'access_token') else '') }}
 
-  enable_open_url_button_var: !input enable_open_url_button
-  open_url_text: !input open_url
-  open_url_title_text: !input open_url_title
-  tap_url_text: !input tap_url
+  # Optional rolling snapshot (kept for parity; not required for iOS)
+  filename_stem_var: !input filename_stem
+  snap_abs: "{{ '/media/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
+  bust: "{{ (now() | as_timestamp) | int }}"
 
   show_silence_this_var: !input show_silence_this_button
   show_silence_all_var: !input show_silence_all_button
@@ -283,16 +281,19 @@ variables:
 
   cooldown_seconds_var: !input cooldown_seconds
 
+  enable_open_url_button_var: !input enable_open_url_button
+  open_url_text: !input open_url
+  open_url_title_text: !input open_url_title
+
+  ios_live_view_entity: !input ios_live_view_entity
+  ios_sound_name_var: !input ios_sound_name
+  ios_sound_volume_var: !input ios_sound_volume
+  ios_sound_volume_float: "{{ (ios_sound_volume_var | int(100)) / 100 }}"
+  ios_critical_var: !input ios_critical
+
   # Unique action ids
   action_silence_one: "silence-one-{{ this.entity_id }}"
   action_silence_all: "silence-all-{{ this.entity_id }}"
-
-  # iOS options
-  ios_live_view_entity: !input ios_live_view
-  ios_sound_name_var: !input ios_sound_name
-  ios_sound_volume_pct: !input ios_sound_volume
-  ios_sound_volume_float: "{{ (ios_sound_volume_pct | int(100)) / 100 }}"
-  ios_critical_var: !input ios_critical
 
 conditions: []
 
@@ -360,7 +361,7 @@ actions:
               {{ (disable_hours_list | length == 0)
                  or (now().hour not in disable_hours_list) }}
 
-          # Snapshot (single rolling file)
+          # (Optional) also save a rolling snapshot file
           - action: camera.snapshot
             data:
               entity_id: !input camera
@@ -381,7 +382,6 @@ actions:
                      | replace('{event}', event_text) }}
                 {% endif %}
               url_on: "{{ enable_open_url_button_var and (open_url_text | trim) != '' }}"
-              tap_url_final: "{{ tap_url_text | trim }}"
 
           # Send to each selected iOS device via its mobile_app notify service
           - repeat:
@@ -390,29 +390,31 @@ actions:
                 - variables:
                     svc_name: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item,'name') | slugify) }}"
 
-                # ----- WITH Open URL button -----
+                # URL ON + Silence THIS + Silence ALL
                 - choose:
                     - conditions:
                         - condition: template
-                          value_template: "{{ url_on }}"
+                          value_template: "{{ url_on and show_silence_this_var and show_silence_all_var }}"
                       sequence:
                         - service: "{{ svc_name }}"
                           data:
                             title: "{{ title_final }}"
                             message: "{{ msg_final }}"
                             data:
-                              # iOS image
-                              image: "{{ snap_rel }}?v={{ bust }}"
-                              # Tap target (if provided)
-                              url: "{{ tap_url_final if tap_url_final != '' else none }}"
+                              # iOS attachment via camera proxy
+                              attachment:
+                                url: "{{ camera_proxy_url }}"
+                                content-type: jpeg
+                              # Tap to open URL (optional)
+                              url: "{{ open_url_text }}"
                               # iOS sound/critical
                               push:
                                 sound:
                                   name: "{{ ios_sound_name_var }}"
                                   volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
                                   critical: "{{ 1 if ios_critical_var else 0 }}"
-                              # iOS live view (optional)
-                              entity_id: "{{ ios_live_view_entity }}"
+                              # Live View (optional)
+                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
                               # Buttons
                               actions:
                                 - action: URI
@@ -425,24 +427,74 @@ actions:
                                   title: "Silence ALL {{ silence_minutes_var }}m"
                                   icon: mdi:bell-outline
 
-                    # ----- WITHOUT Open URL button -----
+                    # URL ON + Silence THIS only
                     - conditions:
                         - condition: template
-                          value_template: "{{ not url_on }}"
+                          value_template: "{{ url_on and show_silence_this_var and not show_silence_all_var }}"
                       sequence:
                         - service: "{{ svc_name }}"
                           data:
                             title: "{{ title_final }}"
                             message: "{{ msg_final }}"
                             data:
-                              image: "{{ snap_rel }}?v={{ bust }}"
-                              url: "{{ tap_url_final if tap_url_final != '' else none }}"
+                              attachment:
+                                url: "{{ camera_proxy_url }}"
+                                content-type: jpeg
+                              url: "{{ open_url_text }}"
                               push:
                                 sound:
                                   name: "{{ ios_sound_name_var }}"
                                   volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
                                   critical: "{{ 1 if ios_critical_var else 0 }}"
-                              entity_id: "{{ ios_live_view_entity }}"
+                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
+                              actions:
+                                - action: URI
+                                  title: "{{ open_url_title_text }}"
+                                  uri: "{{ open_url_text }}"
+                                - action: "{{ action_silence_one }}"
+                                  title: "Silence {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-sleep-outline
+
+                    # URL ON + no Silence buttons
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ url_on and not show_silence_this_var and not show_silence_all_var }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              attachment:
+                                url: "{{ camera_proxy_url }}"
+                                content-type: jpeg
+                              url: "{{ open_url_text }}"
+                              push:
+                                sound:
+                                  name: "{{ ios_sound_name_var }}"
+                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
+                                  critical: "{{ 1 if ios_critical_var else 0 }}"
+                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
+
+                    # URL OFF + Silence buttons (THIS + ALL)
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ (not url_on) and show_silence_this_var and show_silence_all_var }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              attachment:
+                                url: "{{ camera_proxy_url }}"
+                                content-type: jpeg
+                              push:
+                                sound:
+                                  name: "{{ ios_sound_name_var }}"
+                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
+                                  critical: "{{ 1 if ios_critical_var else 0 }}"
+                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
                               actions:
                                 - action: "{{ action_silence_one }}"
                                   title: "Silence {{ silence_minutes_var }}m"
@@ -450,4 +502,48 @@ actions:
                                 - action: "{{ action_silence_all }}"
                                   title: "Silence ALL {{ silence_minutes_var }}m"
                                   icon: mdi:bell-outline
+
+                    # URL OFF + Silence THIS only
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ (not url_on) and show_silence_this_var and not show_silence_all_var }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              attachment:
+                                url: "{{ camera_proxy_url }}"
+                                content-type: jpeg
+                              push:
+                                sound:
+                                  name: "{{ ios_sound_name_var }}"
+                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
+                                  critical: "{{ 1 if ios_critical_var else 0 }}"
+                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
+                              actions:
+                                - action: "{{ action_silence_one }}"
+                                  title: "Silence {{ silence_minutes_var }}m"
+                                  icon: mdi:bell-sleep-outline
+
+                    # URL OFF + no Silence buttons
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ (not url_on) and not show_silence_this_var and not show_silence_all_var }}"
+                      sequence:
+                        - service: "{{ svc_name }}"
+                          data:
+                            title: "{{ title_final }}"
+                            message: "{{ msg_final }}"
+                            data:
+                              attachment:
+                                url: "{{ camera_proxy_url }}"
+                                content-type: jpeg
+                              push:
+                                sound:
+                                  name: "{{ ios_sound_name_var }}"
+                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
+                                  critical: "{{ 1 if ios_critical_var else 0 }}"
+                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
     default: []
