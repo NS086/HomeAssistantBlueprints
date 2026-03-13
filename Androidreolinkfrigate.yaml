@@ -187,6 +187,19 @@ blueprint:
             - "22"
             - "23"
 
+    snapshot_delay:
+      name: Snapshot delay (seconds)
+      description: >
+        How long to wait after detecting a person before taking the snapshot.
+        Useful to allow the person to get closer for a clearer image.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 30
+          step: 0.1
+          mode: slider
+
     cooldown_seconds:
       name: Cooldown (seconds, optional)
       description: Minimum time between alerts from this automation.
@@ -272,6 +285,7 @@ variables:
   disable_hours_raw: !input disable_hours
   disable_hours_list: "{{ (disable_hours_raw | map('int') | list) if disable_hours_raw is iterable else [] }}"
 
+  snapshot_delay_var: !input snapshot_delay
   cooldown_seconds_var: !input cooldown_seconds
 
   # Reolink deep link (exact camera) and app URI (open app)
@@ -353,6 +367,10 @@ actions:
             value_template: >-
               {{ (disable_hours_list | length == 0)
                  or (now().hour not in disable_hours_list) }}
+
+          # Snapshot delay (user-configurable)
+          - delay:
+              seconds: "{{ snapshot_delay_var | float(0) }}"
 
           # Snapshot (single rolling file)
           - action: camera.snapshot
