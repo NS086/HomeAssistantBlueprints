@@ -13,6 +13,10 @@
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNS086%2FHomeAssistantBlueprints%2Frefs%2Fheads%2Fmain%2Fbeta.yaml)
 
+## Alpha (latest experimental changes)
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNS086%2FHomeAssistantBlueprints%2Frefs%2Fheads%2Falpha%2FAndroidreolinkfrigate.yaml)
+
 ---
 
 -----------------------------------------------
@@ -20,6 +24,10 @@
 # IOS Still in Alpha - All features have not been tested
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNS086%2FHomeAssistantBlueprints%2Frefs%2Fheads%2Fmain%2FIOSAlpha)
+
+## IOS Alpha (latest experimental changes)
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNS086%2FHomeAssistantBlueprints%2Frefs%2Fheads%2Falpha%2FIOSAlpha)
 
 
 A reusable automation blueprint for Reolink cameras/doorbells that:
