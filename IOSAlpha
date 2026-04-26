@@ -1,5 +1,5 @@
 blueprint:
-  name: Reolink Camera Alert (iOS, Proxy Image + Silence THIS/ALL)
+  name: Reolink Camera Alert (iOS, Proxy Image + Silence THIS/ALL) - Detection Selector
   description: >
     iOS snapshot-style notification using camera proxy (requires FULL https URL)
     with buttons:
@@ -7,13 +7,13 @@ blueprint:
       • Silence THIS (timer)
       • Silence ALL (optional list + this automation).
 
-    Includes presence filter, quiet hours, cooldown, iOS live view, and iOS sound volume.
+    Adds detection-selector options so each automation can use one or more
+    binary sensors per camera, including away-only detections.
   domain: automation
-
   input:
-    # Triggers
     person_sensor:
-      name: Person sensor (binary_sensor)
+      name: Person sensor (binary_sensor, optional)
+      default: ""
       selector:
         entity:
           domain: binary_sensor
@@ -29,72 +29,140 @@ blueprint:
             domain:
               - binary_sensor
 
-    # Camera
+    camera_name:
+      name: Camera name
+      description: Friendly name used in notification title/messages
+      selector:
+        text:
+      default: Reolink Camera
+
     camera:
       name: Camera entity
       selector:
         entity:
           domain: camera
 
-    # Target devices (iOS devices using mobile_app)
+    detection_sensors:
+      name: Always-on detection sensors for this camera
+      description: Select binary sensors that should notify regardless of whether you are home or away
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
+
+    away_only_detection_sensors:
+      name: Away-only detection sensors (optional)
+      description: Select binary sensors that should only notify when the presence helper is off
+      default: []
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
+
+    presence_boolean:
+      name: Presence helper for away-only detections (optional)
+      description: Input boolean that is on when you are home; away-only detections notify only when this helper is off
+      default: ""
+      selector:
+        entity:
+          domain: input_boolean
+
     notify_devices:
-      name: iPhones/iPads to notify (mobile_app)
+      name: iPhones/iPads to notify (mobile_app, optional)
+      description: Used when no notify service is provided
+      default: []
       selector:
         device:
           integration: mobile_app
           multiple: true
 
-    # --- NEW: Base URL for iOS attachments ---
+    notify_service:
+      name: Notify service (optional)
+      description: Example notify.justin_mobile_devices; if set, this is used instead of device targets
+      default: ""
+      selector:
+        text:
+
     base_url:
       name: External Base URL (required for iOS attachments)
       description: >
         Full URL to your Home Assistant (e.g., https://ha.example.com).
         Must be reachable from the phone (Wi-Fi & cellular). Nabu Casa URL works.
-      default: ""
       selector:
         text:
+      default: ""
 
-    # Texts
     custom_title:
       name: Notification title (optional)
       default: ""
-      selector: { text: {} }
+      selector:
+        text:
 
     custom_message:
       name: Notification text (optional)
       description: >
         Placeholders: {camera_name}, {event}.
-        Blank → "Person detected at {camera_name}".
+        Blank uses "{event} detected at {camera_name}".
       default: ""
-      selector: { text: {} }
+      selector:
+        text:
 
-    # Optional URL action
+    filename_stem:
+      name: Snapshot filename stem (no extension)
+      description: Unique short name per camera, e.g. driveway, garage
+      selector:
+        text:
+      default: reolink
+
+    cooldown_seconds:
+      name: Cooldown (seconds, optional)
+      description: Minimum seconds between alerts from this automation instance. Set to 0 to disable.
+      selector:
+        number:
+          min: 0
+          max: 86400
+          step: 1
+          mode: box
+      default: 0
+
     enable_open_url_button:
       name: Show "Open URL" button
-      default: false
-      selector: { boolean: {} }
+      selector:
+        boolean:
+      default: true
 
     open_url:
-      name: URL to open
+      name: URL to open (optional)
+      description: Full URL opened by the Open action
+      selector:
+        text:
       default: ""
-      selector: { text: {} }
+
+    open_url_path:
+      name: Open URL path
+      description: Path opened when tapping Open (eg /lovelace-security)
+      selector:
+        text:
+      default: /lovelace-security
 
     open_url_title:
       name: Open URL button label
-      default: "Open URL"
-      selector: { text: {} }
+      default: Open URL
+      selector:
+        text:
 
-    # Silence buttons & scope
     show_silence_this_button:
       name: Show "Silence this camera" button
       default: true
-      selector: { boolean: {} }
+      selector:
+        boolean:
 
     show_silence_all_button:
       name: Show "Silence ALL selected automations" button
       description: Uses the list below; includes this automation too.
-      default: false
-      selector: { boolean: {} }
+      default: true
+      selector:
+        boolean:
 
     silence_minutes:
       name: Silence duration (minutes)
@@ -103,6 +171,7 @@ blueprint:
         number:
           min: 1
           max: 360
+          step: 1
           mode: box
 
     automations_to_silence:
@@ -113,11 +182,11 @@ blueprint:
           domain: automation
           multiple: true
 
-    # Filters
     presence_filter_enabled:
       name: Enable presence filter
       default: false
-      selector: { boolean: {} }
+      selector:
+        boolean:
 
     presence_entities:
       name: Presence entities (people/device trackers/groups)
@@ -164,16 +233,6 @@ blueprint:
             - "22"
             - "23"
 
-    cooldown_seconds:
-      name: Cooldown (seconds, optional)
-      default: 0
-      selector:
-        number:
-          min: 0
-          max: 86400
-          mode: box
-
-    # iOS specifics
     ios_live_view_entity:
       name: iOS Live View entity (optional)
       description: Attach live view from this entity in iOS notifications.
@@ -188,7 +247,7 @@ blueprint:
     ios_sound_name:
       name: iOS Sound name
       description: Use "default" for default sound, or "none" for no sound.
-      default: "default"
+      default: default
       selector:
         select:
           options:
@@ -210,25 +269,136 @@ blueprint:
       name: iOS Critical alert (bypass mute/DND)
       default: false
       selector:
-        boolean: {}
+        boolean:
 
-    # (Optional) also save a rolling snapshot on disk (not required for iOS)
-    filename_stem:
-      name: Snapshot filename stem (no extension)
-      default: "camera"
-      selector: { text: {} }
+    global_notifications_enabled:
+      name: Global camera notifications enabled helper (optional)
+      description: Optional input_boolean that must be on to send alerts
+      default: ""
+      selector:
+        entity:
+          domain: input_boolean
 
 mode: queued
 max: 10
 
-triggers:
-  - id: person
-    platform: state
-    entity_id: !input person_sensor
-    to: "on"
+variables:
+  i_person_sensor: !input person_sensor
+  i_extra_sensors: !input extra_sensors
+  i_camera_name: !input camera_name
+  i_camera: !input camera
+  i_detection_sensors: !input detection_sensors
+  i_away_only_detection_sensors: !input away_only_detection_sensors
+  i_presence_boolean: !input presence_boolean
+  i_notify_devices: !input notify_devices
+  i_notify_service: !input notify_service
+  i_base_url: !input base_url
+  i_custom_title: !input custom_title
+  i_custom_message: !input custom_message
+  i_filename_stem: !input filename_stem
+  i_cooldown_seconds: !input cooldown_seconds
+  i_enable_open_url_button: !input enable_open_url_button
+  i_open_url: !input open_url
+  i_open_url_path: !input open_url_path
+  i_open_url_title: !input open_url_title
+  i_show_silence_this_button: !input show_silence_this_button
+  i_show_silence_all_button: !input show_silence_all_button
+  i_silence_minutes: !input silence_minutes
+  i_automations_to_silence: !input automations_to_silence
+  i_presence_filter_enabled: !input presence_filter_enabled
+  i_presence_entities: !input presence_entities
+  i_disable_hours: !input disable_hours
+  i_ios_live_view_entity: !input ios_live_view_entity
+  i_ios_sound_name: !input ios_sound_name
+  i_ios_sound_volume: !input ios_sound_volume
+  i_ios_critical: !input ios_critical
+  i_global_notifications_enabled: !input global_notifications_enabled
 
-  - id: extra
-    platform: template
+  extra_sensors_list: !input extra_sensors
+  has_notify_devices: "{{ (i_notify_devices | default([], true) | list | count) > 0 }}"
+  has_notify_service: "{{ i_notify_service | trim != '' }}"
+  triggered_is_away_only: "{{ trigger.entity_id in (i_away_only_detection_sensors | default([], true) | list) if trigger.platform == 'state' else false }}"
+  effective_open_url: >
+    {% if i_open_url | trim != '' %}
+      {{ i_open_url }}
+    {% else %}
+      {{ i_open_url_path }}
+    {% endif %}
+
+  presence_allows_away_notification: >
+    {% if trigger.platform != 'state' %}
+      true
+    {% elif not triggered_is_away_only %}
+      true
+    {% elif i_presence_boolean == '' %}
+      false
+    {% else %}
+      {{ is_state(i_presence_boolean, 'off') }}
+    {% endif %}
+
+  presence_filter_allows_notification: >
+    {% if not i_presence_filter_enabled %}
+      true
+    {% elif (i_presence_entities | default([], true) | list | count) == 0 %}
+      true
+    {% else %}
+      {{ (expand(i_presence_entities) | selectattr('state','eq','home') | list | length) == 0 }}
+    {% endif %}
+
+  disable_hours_list: "{{ (i_disable_hours | map('int') | list) if i_disable_hours is iterable else [] }}"
+  quiet_hours_allow_notification: "{{ (disable_hours_list | length == 0) or (now().hour not in disable_hours_list) }}"
+
+  slug: "{{ i_filename_stem | lower | regex_replace('[^a-z0-9_]+', '_') }}"
+  action_silence_this: "{{ 'REOLINK_SILENCE_THIS_' ~ slug }}"
+  action_silence_all: "{{ 'REOLINK_SILENCE_ALL_' ~ slug }}"
+
+  base_url_input: !input base_url
+  camera_proxy_path: >-
+    {{ '/api/camera_proxy/' ~ i_camera
+       ~ (('?token=' ~ state_attr(i_camera,'access_token')) if state_attr(i_camera,'access_token') else '') }}
+  camera_proxy_full: >-
+    {{ (base_url_input | trim).rstrip('/') ~ camera_proxy_path }}
+  snap_abs: "{{ '/media/reolink/' ~ i_filename_stem ~ '_latest.jpg' }}"
+
+  cooldown_ok: >
+    {% if this.attributes.last_triggered is none %}
+      true
+    {% else %}
+      {{ (as_timestamp(now()) - as_timestamp(this.attributes.last_triggered)) > (i_cooldown_seconds | int(0)) }}
+    {% endif %}
+
+  triggered_name: >
+    {% if trigger.platform == 'state' %}
+      {{ state_attr(trigger.entity_id, 'friendly_name') or trigger.entity_id }}
+    {% elif trigger.id == 'person' and i_person_sensor | trim != '' %}
+      {{ state_attr(i_person_sensor, 'friendly_name') or i_person_sensor }}
+    {% elif trigger.id == 'extra' %}
+      {% set active = expand(extra_sensors_list) | selectattr('state','eq','on') | list %}
+      {{ (active[0].name if active | length > 0 else 'Event') }}
+    {% else %}
+      Event
+    {% endif %}
+
+  event_text: "{{ 'Person' if trigger.id in ['person', 'always_detection', 'away_detection'] else 'Event' }}"
+  title_final: "{{ (i_custom_title | trim) if (i_custom_title | trim) != '' else (i_camera_name ~ ' Alert') }}"
+  message_final: >
+    {% set base = i_custom_message | trim %}
+    {% if base == '' %}
+      {{ triggered_name ~ ' detected at ' ~ i_camera_name }}
+    {% else %}
+      {{ base | replace('{camera_name}', i_camera_name) | replace('{event}', event_text) }}
+    {% endif %}
+
+  can_silence_this: "{{ i_show_silence_this_button and (i_silence_minutes | int(0)) > 0 }}"
+  can_silence_all: "{{ i_show_silence_all_button and (i_silence_minutes | int(0)) > 0 }}"
+
+trigger:
+  - platform: template
+    value_template: >-
+      {{ i_person_sensor != '' and is_state(i_person_sensor, 'on') }}
+    id: person
+
+  - platform: template
     value_template: >-
       {% set ents = expand(extra_sensors_list) %}
       {% if ents | length == 0 %}
@@ -236,317 +406,205 @@ triggers:
       {% else %}
         {{ (ents | selectattr('state','eq','on') | list | length) > 0 }}
       {% endif %}
+    id: extra
 
-  # Mobile actions (unique per automation instance)
-  - id: silence_one
-    platform: event
+  - platform: state
+    entity_id: !input detection_sensors
+    to: "on"
+    id: always_detection
+
+  - platform: state
+    entity_id: !input away_only_detection_sensors
+    to: "on"
+    id: away_detection
+
+  - platform: event
     event_type: mobile_app_notification_action
-    event_data:
-      action: silence-one-{{ this.entity_id }}
+    id: mobile_action
 
-  - id: silence_all
-    platform: event
-    event_type: mobile_app_notification_action
-    event_data:
-      action: silence-all-{{ this.entity_id }}
+condition: []
 
-# Variables
-variables:
-  camera_entity: !input camera
-  cam_name: "{{ state_attr(camera_entity, 'friendly_name') or camera_entity }}"
-  extra_sensors_list: !input extra_sensors
-
-  notify_device_ids: !input notify_devices
-  notify_ids_list: >-
-    {{ notify_device_ids if notify_device_ids is iterable else [notify_device_ids] }}
-
-  custom_title_text: !input custom_title
-  custom_message_text: !input custom_message
-
-  # Build FULL iOS attachment URL: <base_url>/api/camera_proxy/<entity_id>?token=...
-  base_url_input: !input base_url
-  camera_proxy_path: >-
-    {{ '/api/camera_proxy/' ~ camera_entity
-       ~ (('?token=' ~ state_attr(camera_entity,'access_token')) if state_attr(camera_entity,'access_token') else '') }}
-  camera_proxy_full: >-
-    {{ (base_url_input | trim).rstrip('/') ~ camera_proxy_path }}
-
-  # Optional rolling snapshot (kept for parity; not required for iOS)
-  filename_stem_var: !input filename_stem
-  snap_abs: "{{ '/media/reolink/' ~ filename_stem_var ~ '_latest.jpg' }}"
-  bust: "{{ (now() | as_timestamp) | int }}"
-
-  show_silence_this_var: !input show_silence_this_button
-  show_silence_all_var: !input show_silence_all_button
-  silence_minutes_var: !input silence_minutes
-  autos_all_list: !input automations_to_silence
-
-  presence_filter_enabled_var: !input presence_filter_enabled
-  presence_entities_list: !input presence_entities
-
-  disable_hours_raw: !input disable_hours
-  disable_hours_list: "{{ (disable_hours_raw | map('int') | list) if disable_hours_raw is iterable else [] }}"
-
-  cooldown_seconds_var: !input cooldown_seconds
-
-  enable_open_url_button_var: !input enable_open_url_button
-  open_url_text: !input open_url
-  open_url_title_text: !input open_url_title
-
-  ios_live_view_entity: !input ios_live_view_entity
-  ios_sound_name_var: !input ios_sound_name
-  ios_sound_volume_var: !input ios_sound_volume
-  ios_sound_volume_float: "{{ (ios_sound_volume_var | int(100)) / 100 }}"
-  ios_critical_var: !input ios_critical
-
-  # Unique action ids
-  action_silence_one: "silence-one-{{ this.entity_id }}"
-  action_silence_all: "silence-all-{{ this.entity_id }}"
-
-conditions: []
-
-actions:
+action:
   - choose:
-      # ---------- Silence THIS ----------
-      - conditions:
-          - condition: trigger
-            id: silence_one
-        sequence:
-          - action: automation.turn_off
-            target:
-              entity_id: "{{ this.entity_id }}"
-            data:
-              stop_actions: false
-          - delay:
-              minutes: !input silence_minutes
-          - action: automation.turn_on
-            target:
-              entity_id: "{{ this.entity_id }}"
-
-      # ---------- Silence ALL ----------
-      - conditions:
-          - condition: trigger
-            id: silence_all
-        sequence:
-          - variables:
-              all_list: >-
-                {{ ([this.entity_id] + (autos_all_list if autos_all_list is iterable else [])) | unique }}
-          - action: automation.turn_off
-            target:
-              entity_id: "{{ all_list }}"
-            data:
-              stop_actions: false
-          - delay:
-              minutes: !input silence_minutes
-          - action: automation.turn_on
-            target:
-              entity_id: "{{ all_list }}"
-
-      # ---------- Main notification path ----------
       - conditions:
           - condition: template
-            value_template: "{{ trigger.id in ['person','extra'] }}"
+            value_template: "{{ trigger.id in ['person', 'extra', 'always_detection', 'away_detection'] }}"
+          - condition: template
+            value_template: "{{ cooldown_ok }}"
+          - condition: template
+            value_template: "{{ presence_allows_away_notification }}"
+          - condition: template
+            value_template: "{{ presence_filter_allows_notification }}"
+          - condition: template
+            value_template: "{{ quiet_hours_allow_notification }}"
+          - condition: template
+            value_template: >
+              {% if i_global_notifications_enabled == '' %}
+                true
+              {% else %}
+                {{ is_state(i_global_notifications_enabled, 'on') }}
+              {% endif %}
         sequence:
-          # Cooldown
-          - condition: template
-            value_template: >-
-              {{ cooldown_seconds_var == 0
-                 or not this.attributes.last_triggered
-                 or (now() - this.attributes.last_triggered).total_seconds() > cooldown_seconds_var }}
-
-          # Presence filter
-          - condition: template
-            value_template: >-
-              {% if presence_filter_enabled_var %}
-                {{ (expand(presence_entities_list)
-                    | selectattr('state','eq','home')
-                    | list | length) == 0 }}
-              {% else %} true {% endif %}
-
-          # Quiet hours
-          - condition: template
-            value_template: >-
-              {{ (disable_hours_list | length == 0)
-                 or (now().hour not in disable_hours_list) }}
-
-          # (Optional) also save a rolling snapshot file
           - action: camera.snapshot
-            data:
+            target:
               entity_id: !input camera
+            data:
               filename: "{{ snap_abs }}"
+
           - delay: "00:00:01"
 
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ has_notify_service }}"
+                sequence:
+                  - action: !input notify_service
+                    data:
+                      title: "{{ title_final }}"
+                      message: "{{ message_final }}"
+                      data:
+                        attachment:
+                          url: "{{ camera_proxy_full }}"
+                          content-type: jpeg
+                        tag: "{{ 'reolink_' ~ slug }}"
+                        group: "{{ 'reolink_' ~ slug }}"
+                        url: >
+                          {{ effective_open_url if i_enable_open_url_button and (effective_open_url | trim) != '' else none }}
+                        entity_id: >
+                          {{ i_ios_live_view_entity if i_ios_live_view_entity | trim != '' else none }}
+                        push:
+                          sound:
+                            name: "{{ i_ios_sound_name }}"
+                            volume: "{{ 0 if i_ios_sound_name == 'none' else ((i_ios_sound_volume | int(100)) / 100) }}"
+                            critical: "{{ 1 if i_ios_critical else 0 }}"
+                        actions: >
+                          {% set acts = [] %}
+                          {% if i_enable_open_url_button and (effective_open_url | trim) != '' %}
+                            {% set acts = acts + [ {'action':'URI','title': i_open_url_title, 'uri': effective_open_url } ] %}
+                          {% endif %}
+                          {% if can_silence_this %}
+                            {% set acts = acts + [ {'action': action_silence_this, 'title':'Silence ' ~ (i_silence_minutes | string) ~ 'm'} ] %}
+                          {% endif %}
+                          {% if can_silence_all %}
+                            {% set acts = acts + [ {'action': action_silence_all, 'title':'Silence ALL ' ~ (i_silence_minutes | string) ~ 'm'} ] %}
+                          {% endif %}
+                          {{ acts }}
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ has_notify_devices }}"
+                sequence:
+                  - action: notify.notify
+                    target:
+                      device_id: !input notify_devices
+                    data:
+                      title: "{{ title_final }}"
+                      message: "{{ message_final }}"
+                      data:
+                        attachment:
+                          url: "{{ camera_proxy_full }}"
+                          content-type: jpeg
+                        tag: "{{ 'reolink_' ~ slug }}"
+                        group: "{{ 'reolink_' ~ slug }}"
+                        url: >
+                          {{ effective_open_url if i_enable_open_url_button and (effective_open_url | trim) != '' else none }}
+                        entity_id: >
+                          {{ i_ios_live_view_entity if i_ios_live_view_entity | trim != '' else none }}
+                        push:
+                          sound:
+                            name: "{{ i_ios_sound_name }}"
+                            volume: "{{ 0 if i_ios_sound_name == 'none' else ((i_ios_sound_volume | int(100)) / 100) }}"
+                            critical: "{{ 1 if i_ios_critical else 0 }}"
+                        actions: >
+                          {% set acts = [] %}
+                          {% if i_enable_open_url_button and (effective_open_url | trim) != '' %}
+                            {% set acts = acts + [ {'action':'URI','title': i_open_url_title, 'uri': effective_open_url } ] %}
+                          {% endif %}
+                          {% if can_silence_this %}
+                            {% set acts = acts + [ {'action': action_silence_this, 'title':'Silence ' ~ (i_silence_minutes | string) ~ 'm'} ] %}
+                          {% endif %}
+                          {% if can_silence_all %}
+                            {% set acts = acts + [ {'action': action_silence_all, 'title':'Silence ALL ' ~ (i_silence_minutes | string) ~ 'm'} ] %}
+                          {% endif %}
+                          {{ acts }}
+
+      - conditions:
+          - condition: trigger
+            id: mobile_action
+          - condition: template
+            value_template: "{{ trigger.event.data.action == action_silence_this }}"
+          - condition: template
+            value_template: "{{ can_silence_this }}"
+        sequence:
+          - action: automation.turn_off
+            target:
+              entity_id: "{{ this.entity_id }}"
+            data:
+              stop_actions: false
+          - delay:
+              minutes: !input silence_minutes
+          - action: automation.turn_on
+            target:
+              entity_id: "{{ this.entity_id }}"
+
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ has_notify_service }}"
+                sequence:
+                  - action: !input notify_service
+                    data:
+                      title: "{{ i_camera_name }}"
+                      message: "Silenced THIS camera notifications."
+              - conditions:
+                  - condition: template
+                    value_template: "{{ has_notify_devices }}"
+                sequence:
+                  - action: notify.notify
+                    target:
+                      device_id: !input notify_devices
+                    data:
+                      title: "{{ i_camera_name }}"
+                      message: "Silenced THIS camera notifications."
+
+      - conditions:
+          - condition: trigger
+            id: mobile_action
+          - condition: template
+            value_template: "{{ trigger.event.data.action == action_silence_all }}"
+          - condition: template
+            value_template: "{{ can_silence_all }}"
+        sequence:
           - variables:
-              title_final: "{{ custom_title_text | trim }}"
-              event_text: "{{ 'Person detected' if trigger.id == 'person' else 'Event' }}"
-              msg_default: "{{ 'Person detected at ' ~ cam_name }}"
-              msg_final: >-
-                {% set base = custom_message_text | trim %}
-                {% if base == '' %}
-                  {{ msg_default }}
-                {% else %}
-                  {{ base
-                     | replace('{camera_name}', cam_name)
-                     | replace('{event}', event_text) }}
-                {% endif %}
-              url_on: "{{ enable_open_url_button_var and (open_url_text | trim) != '' }}"
+              all_list: >
+                {{ ([this.entity_id] + (i_automations_to_silence | default([], true) | list)) | unique }}
+          - action: automation.turn_off
+            target:
+              entity_id: "{{ all_list }}"
+            data:
+              stop_actions: false
+          - delay:
+              minutes: !input silence_minutes
+          - action: automation.turn_on
+            target:
+              entity_id: "{{ all_list }}"
 
-          # Send to each selected iOS device via its mobile_app notify service
-          - repeat:
-              for_each: "{{ notify_ids_list }}"
-              sequence:
-                - variables:
-                    svc_name: "{{ 'notify.mobile_app_' ~ (device_attr(repeat.item,'name') | slugify) }}"
-
-                # URL ON + Silence THIS + Silence ALL
-                - choose:
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ url_on and show_silence_this_var and show_silence_all_var }}"
-                      sequence:
-                        - service: "{{ svc_name }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              attachment:
-                                url: "{{ camera_proxy_full }}"
-                                content-type: jpeg
-                              url: "{{ open_url_text }}"
-                              push:
-                                sound:
-                                  name: "{{ ios_sound_name_var }}"
-                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
-                                  critical: "{{ 1 if ios_critical_var else 0 }}"
-                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
-                              actions:
-                                - action: URI
-                                  title: "{{ open_url_title_text }}"
-                                  uri: "{{ open_url_text }}"
-                                - action: "{{ action_silence_one }}"
-                                  title: "Silence {{ silence_minutes_var }}m"
-                                  icon: mdi:bell-sleep-outline
-                                - action: "{{ action_silence_all }}"
-                                  title: "Silence ALL {{ silence_minutes_var }}m"
-                                  icon: mdi:bell-outline
-
-                    # URL ON + Silence THIS only
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ url_on and show_silence_this_var and not show_silence_all_var }}"
-                      sequence:
-                        - service: "{{ svc_name }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              attachment:
-                                url: "{{ camera_proxy_full }}"
-                                content-type: jpeg
-                              url: "{{ open_url_text }}"
-                              push:
-                                sound:
-                                  name: "{{ ios_sound_name_var }}"
-                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
-                                  critical: "{{ 1 if ios_critical_var else 0 }}"
-                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
-                              actions:
-                                - action: URI
-                                  title: "{{ open_url_title_text }}"
-                                  uri: "{{ open_url_text }}"
-                                - action: "{{ action_silence_one }}"
-                                  title: "Silence {{ silence_minutes_var }}m"
-                                  icon: mdi:bell-sleep-outline
-
-                    # URL ON + no Silence buttons
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ url_on and not show_silence_this_var and not show_silence_all_var }}"
-                      sequence:
-                        - service: "{{ svc_name }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              attachment:
-                                url: "{{ camera_proxy_full }}"
-                                content-type: jpeg
-                              url: "{{ open_url_text }}"
-                              push:
-                                sound:
-                                  name: "{{ ios_sound_name_var }}"
-                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
-                                  critical: "{{ 1 if ios_critical_var else 0 }}"
-                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
-
-                    # URL OFF + Silence THIS + ALL
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ (not url_on) and show_silence_this_var and show_silence_all_var }}"
-                      sequence:
-                        - service: "{{ svc_name }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              attachment:
-                                url: "{{ camera_proxy_full }}"
-                                content-type: jpeg
-                              push:
-                                sound:
-                                  name: "{{ ios_sound_name_var }}"
-                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
-                                  critical: "{{ 1 if ios_critical_var else 0 }}"
-                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
-                              actions:
-                                - action: "{{ action_silence_one }}"
-                                  title: "Silence {{ silence_minutes_var }}m"
-                                  icon: mdi:bell-sleep-outline
-                                - action: "{{ action_silence_all }}"
-                                  title: "Silence ALL {{ silence_minutes_var }}m"
-                                  icon: mdi:bell-outline
-
-                    # URL OFF + Silence THIS only
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ (not url_on) and show_silence_this_var and not show_silence_all_var }}"
-                      sequence:
-                        - service: "{{ svc_name }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              attachment:
-                                url: "{{ camera_proxy_full }}"
-                                content-type: jpeg
-                              push:
-                                sound:
-                                  name: "{{ ios_sound_name_var }}"
-                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
-                                  critical: "{{ 1 if ios_critical_var else 0 }}"
-                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
-                              actions:
-                                - action: "{{ action_silence_one }}"
-                                  title: "Silence {{ silence_minutes_var }}m"
-                                  icon: mdi:bell-sleep-outline
-
-                    # URL OFF + no Silence buttons
-                    - conditions:
-                        - condition: template
-                          value_template: "{{ (not url_on) and not show_silence_this_var and not show_silence_all_var }}"
-                      sequence:
-                        - service: "{{ svc_name }}"
-                          data:
-                            title: "{{ title_final }}"
-                            message: "{{ msg_final }}"
-                            data:
-                              attachment:
-                                url: "{{ camera_proxy_full }}"
-                                content-type: jpeg
-                              push:
-                                sound:
-                                  name: "{{ ios_sound_name_var }}"
-                                  volume: "{{ 0 if ios_sound_name_var == 'none' else ios_sound_volume_float }}"
-                                  critical: "{{ 1 if ios_critical_var else 0 }}"
-                              entity_id: "{{ ios_live_view_entity if ios_live_view_entity|trim != '' else none }}"
-    default: []
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ has_notify_service }}"
+                sequence:
+                  - action: !input notify_service
+                    data:
+                      title: "{{ i_camera_name }}"
+                      message: "Silenced ALL camera notifications."
+              - conditions:
+                  - condition: template
+                    value_template: "{{ has_notify_devices }}"
+                sequence:
+                  - action: notify.notify
+                    target:
+                      device_id: !input notify_devices
+                    data:
+                      title: "{{ i_camera_name }}"
+                      message: "Silenced ALL camera notifications."
