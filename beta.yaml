@@ -187,6 +187,25 @@ blueprint:
             - "22"
             - "23"
 
+    block_entity:
+      name: Block-if entity (optional)
+      description: >
+        If this entity is in the state specified below, no notification is sent.
+        Example: an alarm panel, an input_boolean, a binary_sensor, etc.
+        Leave empty to disable this filter.
+      default: ""
+      selector:
+        entity: {}
+
+    block_entity_state:
+      name: Block-if state
+      description: >
+        The entity state that suppresses notifications.
+        Examples: "armed_home", "armed_away", "on", "active".
+        Only used when a Block-if entity is selected above.
+      default: ""
+      selector: { text: {} }
+
     cooldown_seconds:
       name: Cooldown (seconds, optional)
       description: Minimum time between alerts from this automation.
@@ -272,6 +291,9 @@ variables:
   disable_hours_raw: !input disable_hours
   disable_hours_list: "{{ (disable_hours_raw | map('int') | list) if disable_hours_raw is iterable else [] }}"
 
+  block_entity_var: !input block_entity
+  block_entity_state_var: !input block_entity_state
+
   cooldown_seconds_var: !input cooldown_seconds
 
   # Reolink deep link (exact camera) and app URI (open app)
@@ -346,6 +368,13 @@ actions:
                 {{ (expand(presence_entities_list)
                     | selectattr('state','eq','home')
                     | list | length) == 0 }}
+              {% else %} true {% endif %}
+
+          # Block-if entity state
+          - condition: template
+            value_template: >-
+              {% if block_entity_var and block_entity_state_var %}
+                {{ states(block_entity_var) != block_entity_state_var }}
               {% else %} true {% endif %}
 
           # Quiet hours
