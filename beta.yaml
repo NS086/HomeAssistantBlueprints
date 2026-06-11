@@ -201,10 +201,11 @@ blueprint:
       name: Block-if state
       description: >
         The entity state that suppresses notifications.
-        Examples: "armed_home", "armed_away", "on", "active".
         Only used when a Block-if entity is selected above.
       default: ""
-      selector: { text: {} }
+      selector:
+        state:
+          entity_id: !input block_entity
 
     cooldown_seconds:
       name: Cooldown (seconds, optional)
