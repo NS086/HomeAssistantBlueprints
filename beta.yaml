@@ -281,7 +281,7 @@ variables:
   channel_mask: "{{ (2 ** (nvr_channel_index_var | int - 1)) | int }}"
   intent_timestamp: "{{ (now().timestamp()) | int }}"
   intent_uri: >-
-    intent://scan/#Intent;scheme=reolink;package=com.mcu.reolink;launchFlags=0x14000000;action=android.intent.action.VIEW;S.UID={{ reolink_uid }};S.DEVNAME={{ reolink_devname }};S.ALMTYPE=PEOPLE;S.ALMCHN={{ channel_mask }};S.channelid={{ channel_mask }};S.ALMNAME=Detection;S.ALMTIME={{ intent_timestamp }};S.pushVersion=v2;end
+    intent:#Intent;launchFlags=0x14000000;component=com.mcu.reolink/com.android.bc.login.WelcomeActivity;S.UID={{ reolink_uid }};S.ALMTIME={{ intent_timestamp }};S.ALMNAME=Detection;S.DEVNAME={{ reolink_devname }};S.ALMTYPE=PEOPLE;S.ALMCHN={{ channel_mask }};S.pushVersion=v2;end
   reolink_app_uri: "app://com.mcu.reolink"
 
   # Unique action ids
