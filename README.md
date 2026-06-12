@@ -29,6 +29,54 @@
 
 [![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2FNS086%2FHomeAssistantBlueprints%2Frefs%2Fheads%2Falpha%2FIOSAlpha)
 
+## iOS Requirements
+
+> **No Timer helper needed.** The iOS blueprint uses built-in timed silence (via automation disable/re-enable) — you do _not_ need to create a Timer helper. The Timer helper sections below apply to Android only.
+
+- Home Assistant Companion App installed on the target iPhone/iPad
+- An **external HTTPS URL** reachable from your phone on both Wi-Fi and cellular (e.g. Nabu Casa remote URL or your own domain). This is required for iOS image attachments.
+- Reolink camera entity and at least one binary sensor (person, vehicle, animal, etc.)
+
+## iOS — Use the blueprint
+
+**Automations → Create Automation → From Blueprint → "Reolink Camera Alert (iOS…)"**
+
+Fill the inputs:
+
+- **Camera name**: friendly name shown in notification title (e.g. `Driveway`)
+- **Camera entity**: e.g. `camera.reolink_driveway_fluent`
+- **Always-on detection sensors**: binary sensors that notify regardless of whether you are home (e.g. `binary_sensor.reolink_driveway_person`)
+- **Away-only detection sensors** _(optional)_: binary sensors that only notify when the **Presence helper** is off
+- **Presence helper** _(optional)_: an `input_boolean` that is `on` when you are home — used to gate away-only sensors
+- **iPhones/iPads to notify**: select your iOS mobile devices (integration: `mobile_app`)
+- **Notify service** _(optional)_: e.g. `notify.justin_mobile_devices` — if set, used instead of device targets
+- **External Base URL**: your full HA URL, e.g. `https://ha.example.com` (required for snapshot attachment)
+- **Snapshot filename stem**: short unique name per camera, e.g. `driveway` or `garage`
+- **Cooldown (seconds)**: minimum gap between alerts from this automation (default `0` = no cooldown)
+- **Show "Open URL" button** _(optional)_: enable to add a tap-to-open action
+- **Open URL path**: HA path opened on tap, e.g. `/lovelace-security`
+- **Show "Silence this camera" button**: silences this automation for the configured duration
+- **Show "Silence ALL selected automations" button**: silences this and any automations listed below
+- **Other automations to silence** _(optional)_: additional Reolink automations to include in Silence ALL
+- **Silence duration (minutes)**: default `30`
+- **Enable presence filter** _(optional)_: only notify if all selected people/trackers are NOT home
+- **Quiet hours** _(optional)_: hours of day (0–23) when alerts are suppressed
+- **iOS Live View entity** _(optional)_: camera entity to attach as a live view in the notification
+- **iOS Sound name**: `default`, `none`, or a custom sound file name
+- **iOS Sound volume**: 0–100
+- **iOS Critical alert**: bypass mute and Do Not Disturb
+- **Global camera notifications enabled** _(optional)_: an `input_boolean` that must be `on` for any alert to send
+
+## iOS — What this blueprint does
+
+- **Triggers**: any detection sensor (always-on or away-only) going to `on`. Multiple sensors are OR.
+- **Mode**: `queued, max 10` — back-to-back detections queue up and none are lost.
+- **Image**: uses the camera proxy URL (no file written to disk) — requires an external HTTPS base URL.
+- **Silence THIS**: starts a timer on this automation; all triggers are ignored until it expires.
+- **Silence ALL**: extends the silence to any automations listed under "Other automations to silence" as well.
+- **Notification title**: defaults to `{event} detected at {camera_name}`. Fully customisable.
+
+---
 
 A reusable automation blueprint for Reolink cameras/doorbells that:
 
